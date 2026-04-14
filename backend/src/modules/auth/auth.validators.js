@@ -1,5 +1,5 @@
 function validateLoginRequest(req, res, next) {
-	const { login, password, appVersion } = req.body;
+	const { login, password, appVersion } = req.body || {};
 
 	if (!login || !password || !appVersion) {
 		return res.status(400).json({
