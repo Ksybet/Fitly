@@ -15,4 +15,20 @@ async function login(req, res, next) {
 	}
 }
 
-module.exports = { login };
+async function me(req, res, next) {
+	try {
+		res.status(200).json({
+			success: true,
+			data: {
+				user: req.user
+			}
+		});
+	} catch (error) {
+		next(error);
+	}
+}
+
+module.exports = {
+	login,
+	me
+};
