@@ -4,22 +4,34 @@ function validateLoginRequest(req, res, next) {
 	if (!login || !password || !appVersion) {
 		return res.status(400).json({
 			success: false,
-			message: 'login, password and appVersion are required',
-		});
-	}
-
-	if (
-		typeof login !== 'string' ||
-		typeof password !== 'string' ||
-		typeof appVersion !== 'string'
-	) {
-		return res.status(400).json({
-			success: false,
-			message: 'Invalid request format',
+			message: 'Поля login, password и appVersion обязательны',
 		});
 	}
 
 	next();
 }
 
-module.exports = { validateLoginRequest };
+function validateRegisterRequest(req, res, next) {
+	const { email, password, appVersion } = req.body || {};
+
+	if (!email || !password || !appVersion) {
+		return res.status(400).json({
+			success: false,
+			message: 'Поля email, password и appVersion обязательны',
+		});
+	}
+
+	if (password.length < 8) {
+		return res.status(400).json({
+			success: false,
+			message: 'Пароль должен содержать минимум 8 символов',
+		});
+	}
+
+	next();
+}
+
+module.exports = {
+	validateLoginRequest,
+	validateRegisterRequest,
+};
