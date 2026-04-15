@@ -12,7 +12,7 @@ app.use(express.json());
 
 app.use(
 	cors({
-		origin: env.clientUrl,
+		origin: true,
 		credentials: true,
 	}),
 );
