@@ -1,102 +1,110 @@
-import { Text, Button, ScrollView, View } from 'react-native';
-import { useState } from 'react';
-import { login, getMe } from '../../src/api/auth.api';
-import { getMyProfile, updateMyProfile } from '../../src/api/profile.api';
+import React, { useContext } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { AuthContext } from '../../src/context/AuthContext';
+import { router } from 'expo-router';
 
 export default function HomeScreen() {
-	const [result, setResult] = useState('Нажми кнопку для проверки API');
+	const { user, logout } = useContext(AuthContext);
 
-	const handleTestApi = async () => {
-		try {
-			setResult('1) Login...');
-
-			const loginData = await login({
-				login: 'user@example.com',
-				password: '12345678',
-				appVersion: '1.0.0',
-			});
-
-			const token = loginData.accessToken;
-
-			setResult(
-				`1) Login OK\n\nLOGIN DATA:\n${JSON.stringify(loginData, null, 2)}\n\n2) getMe...`,
-			);
-
-			const me = await getMe(token);
-
-			setResult(
-				`1) Login OK\n2) getMe OK\n\nME:\n${JSON.stringify(me, null, 2)}\n\n3) getProfile...`,
-			);
-
-			const profileBefore = await getMyProfile(token);
-
-			setResult(
-				`1) Login OK\n2) getMe OK\n3) getProfile OK\n\nPROFILE BEFORE:\n${JSON.stringify(
-					profileBefore,
-					null,
-					2,
-				)}\n\n4) updateProfile...`,
-			);
-
-			const updatedProfile = await updateMyProfile(token, {
-				firstName: 'Roman',
-				lastName: 'Testov',
-				birthDate: '2004-05-10',
-				gender: 'male',
-				heightCm: 180,
-			});
-
-			setResult(
-				`1) Login OK\n2) getMe OK\n3) getProfile OK\n4) updateProfile OK\n\nUPDATED PROFILE:\n${JSON.stringify(
-					updatedProfile,
-					null,
-					2,
-				)}\n\n5) getProfile again...`,
-			);
-
-			const profileAfter = await getMyProfile(token);
-
-			setResult(
-				`ВСЁ РАБОТАЕТ\n\n` +
-					`LOGIN DATA:\n${JSON.stringify(loginData, null, 2)}\n\n` +
-					`ME:\n${JSON.stringify(me, null, 2)}\n\n` +
-					`PROFILE BEFORE:\n${JSON.stringify(profileBefore, null, 2)}\n\n` +
-					`UPDATED PROFILE:\n${JSON.stringify(updatedProfile, null, 2)}\n\n` +
-					`PROFILE AFTER:\n${JSON.stringify(profileAfter, null, 2)}`,
-			);
-		} catch (e: any) {
-			console.log('FULL ERROR:', e?.response?.data || e);
-			setResult(
-				'ERROR:\n' +
-					JSON.stringify(
-						e?.response?.data || { message: e?.message || 'Unknown error' },
-						null,
-						2,
-					),
-			);
-		}
+	const handleLogout = async () => {
+		await logout();
+		router.replace('/login');
 	};
 
 	return (
-		<ScrollView style={{ flex: 1, backgroundColor: '#ffffff' }}>
-			<View style={{ padding: 16 }}>
-				<Text style={{ fontSize: 22, marginBottom: 16, color: '#000000' }}>
-					API TEST
-				</Text>
-
-				<Button title='Проверить API' onPress={handleTestApi} />
-
-				<Text
-					selectable
-					style={{
-						marginTop: 20,
-						color: '#000000',
-						fontSize: 16,
-					}}
-				>
-					{result}
-				</Text>
+		<View style={styles.container}>
+			<View style={styles.header}>
+				<Text style={styles.logo}>Fitly</Text>
 			</View>
-		</ScrollView>
+
+			<View style={styles.greeting}>
+				<Text style={styles.greetingText}>
+					Привет, {user?.email || 'пользователь'}!
+				</Text>
+				<Text style={styles.subText}>Вот твои показатели на сегодня</Text>
+			</View>
+
+			<View style={styles.cards}>
+				<View style={styles.card}>
+					<Text style={styles.cardTitle}>Шаги</Text>
+					<Text style={styles.cardValue}>0</Text>
+				</View>
+
+				<View style={styles.card}>
+					<Text style={styles.cardTitle}>Сон</Text>
+					<Text style={styles.cardValue}>0 ч</Text>
+				</View>
+
+				<View style={styles.card}>
+					<Text style={styles.cardTitle}>Калории</Text>
+					<Text style={styles.cardValue}>0</Text>
+				</View>
+			</View>
+
+			<TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+				<Text style={styles.logoutText}>Выйти</Text>
+			</TouchableOpacity>
+		</View>
 	);
 }
+
+const styles = StyleSheet.create({
+	container: {
+		flex: 1,
+		backgroundColor: '#F7F8FA',
+		padding: 20,
+	},
+	header: {
+		alignItems: 'center',
+		marginBottom: 20,
+		marginTop: 20,
+	},
+	logo: {
+		fontSize: 28,
+		fontWeight: '700',
+		color: '#00D084',
+	},
+	greeting: {
+		marginBottom: 20,
+	},
+	greetingText: {
+		fontSize: 22,
+		fontWeight: '600',
+		marginBottom: 6,
+	},
+	subText: {
+		color: '#7A7A7A',
+	},
+	cards: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		marginBottom: 20,
+	},
+	card: {
+		backgroundColor: '#fff',
+		padding: 16,
+		borderRadius: 12,
+		width: '30%',
+		alignItems: 'center',
+	},
+	cardTitle: {
+		fontSize: 12,
+		color: '#7A7A7A',
+	},
+	cardValue: {
+		fontSize: 18,
+		fontWeight: '600',
+		marginTop: 6,
+	},
+	logoutBtn: {
+		marginTop: 20,
+		backgroundColor: '#00D084',
+		padding: 14,
+		borderRadius: 10,
+		alignItems: 'center',
+	},
+	logoutText: {
+		color: '#fff',
+		fontWeight: '600',
+	},
+});
