@@ -73,9 +73,10 @@ export default function LoginScreen() {
 		};
 	}, []);
 
+	// ✅ ПЕРЕХОД ПОСЛЕ ЛОГИНА
 	useEffect(() => {
 		if (token) {
-			router.replace('/(tabs)');
+			router.replace('/home');
 		}
 	}, [token]);
 

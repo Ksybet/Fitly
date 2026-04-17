@@ -14,7 +14,7 @@ async function getProfile(userId) {
 			lastName: '',
 			birthDate: null,
 			gender: null,
-			heightCm: null,
+			weightKg: null,
 			updatedAt: new Date().toISOString(),
 		});
 	}
@@ -30,15 +30,21 @@ async function updateProfile(userId, data) {
 			data.firstName !== undefined
 				? data.firstName.trim()
 				: existingProfile.firstName,
+
 		lastName:
 			data.lastName !== undefined
 				? data.lastName.trim()
 				: existingProfile.lastName,
+
 		birthDate:
 			data.birthDate !== undefined ? data.birthDate : existingProfile.birthDate,
+
 		gender: data.gender !== undefined ? data.gender : existingProfile.gender,
-		heightCm:
-			data.heightCm !== undefined ? data.heightCm : existingProfile.heightCm,
+
+		weightKg:
+			data.weightKg !== undefined ? data.weightKg : existingProfile.weightKg,
+
+		updatedAt: new Date().toISOString(),
 	};
 
 	const updatedProfile = await updateProfileByUserId(userId, updateData);
