@@ -1,7 +1,7 @@
 [ai]
 provider = "gemini"
-model = "gemini-1.5-pro"
-max_tokens = 4096
+model = "gemini-2.5-flash"
+max_tokens = 8192
 temperature = 0.2
 
 [review]
