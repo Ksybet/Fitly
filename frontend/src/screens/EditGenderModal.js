@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import {
 	Modal,
 	View,
@@ -8,6 +8,7 @@ import {
 	ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { ThemeContext } from '../context/ThemeContext';
 
 const OPTIONS = [
 	{ label: 'Мужской', value: 'male', icon: 'male-outline' },
@@ -22,11 +23,23 @@ export default function EditGenderModal({
 	onCancel,
 	isSaving = false,
 }) {
+	const { colors, isDark } = useContext(ThemeContext);
+
 	return (
 		<Modal visible={visible} transparent animationType='fade'>
 			<View style={styles.overlay}>
-				<View style={styles.modal}>
-					<Text style={styles.title}>Выберите пол</Text>
+				<View
+					style={[
+						styles.modal,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
+					<Text style={[styles.title, { color: colors.text }]}>
+						Выберите пол
+					</Text>
 
 					<View style={styles.options}>
 						{OPTIONS.map(option => {
@@ -35,7 +48,17 @@ export default function EditGenderModal({
 							return (
 								<TouchableOpacity
 									key={option.value}
-									style={[styles.option, isActive && styles.optionActive]}
+									style={[
+										styles.option,
+										{
+											borderColor: isActive ? colors.primary : colors.border,
+											backgroundColor: isActive
+												? isDark
+													? colors.iconBg
+													: '#F4FFF9'
+												: colors.cardSecondary,
+										},
+									]}
 									onPress={() => onSave(option.value)}
 									activeOpacity={0.8}
 									disabled={isSaving}
@@ -44,20 +67,26 @@ export default function EditGenderModal({
 										<View
 											style={[
 												styles.iconWrapper,
-												isActive && styles.iconWrapperActive,
+												{
+													backgroundColor: isActive
+														? colors.primary
+														: colors.iconBg,
+												},
 											]}
 										>
 											<Ionicons
 												name={option.icon}
 												size={20}
-												color={isActive ? '#FFFFFF' : '#18B67A'}
+												color={isActive ? '#FFFFFF' : colors.primary}
 											/>
 										</View>
 
 										<Text
 											style={[
 												styles.optionText,
-												isActive && styles.optionTextActive,
+												{
+													color: isActive ? colors.text : colors.text,
+												},
 											]}
 										>
 											{option.label}
@@ -68,7 +97,7 @@ export default function EditGenderModal({
 										<Ionicons
 											name='checkmark-circle'
 											size={22}
-											color='#18B67A'
+											color={colors.primary}
 										/>
 									)}
 								</TouchableOpacity>
@@ -78,14 +107,23 @@ export default function EditGenderModal({
 
 					<TouchableOpacity
 						onPress={onCancel}
-						style={styles.cancelButton}
+						style={[
+							styles.cancelButton,
+							{
+								backgroundColor: isDark ? colors.cardSecondary : '#F3F4F6',
+							},
+						]}
 						activeOpacity={0.8}
 						disabled={isSaving}
 					>
 						{isSaving ? (
-							<ActivityIndicator size='small' color='#18B67A' />
+							<ActivityIndicator size='small' color={colors.primary} />
 						) : (
-							<Text style={styles.cancelText}>Закрыть</Text>
+							<Text
+								style={[styles.cancelText, { color: colors.textSecondary }]}
+							>
+								Закрыть
+							</Text>
 						)}
 					</TouchableOpacity>
 				</View>
@@ -105,10 +143,8 @@ const styles = StyleSheet.create({
 
 	modal: {
 		width: '100%',
-		backgroundColor: '#FFFFFF',
 		borderRadius: 24,
 		padding: 20,
-		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.12,
 		shadowRadius: 10,
@@ -118,7 +154,6 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 20,
 		fontWeight: '700',
-		color: '#1F2937',
 		marginBottom: 18,
 		textAlign: 'center',
 	},
@@ -132,17 +167,10 @@ const styles = StyleSheet.create({
 		minHeight: 60,
 		borderRadius: 18,
 		borderWidth: 1,
-		borderColor: '#E5E7EB',
-		backgroundColor: '#F9FAFB',
 		paddingHorizontal: 14,
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'space-between',
-	},
-
-	optionActive: {
-		borderColor: '#18B67A',
-		backgroundColor: '#F4FFF9',
 	},
 
 	optionLeft: {
@@ -154,30 +182,19 @@ const styles = StyleSheet.create({
 		width: 38,
 		height: 38,
 		borderRadius: 19,
-		backgroundColor: '#EAF8F2',
 		alignItems: 'center',
 		justifyContent: 'center',
 		marginRight: 12,
 	},
 
-	iconWrapperActive: {
-		backgroundColor: '#18B67A',
-	},
-
 	optionText: {
 		fontSize: 16,
 		fontWeight: '600',
-		color: '#1F2937',
-	},
-
-	optionTextActive: {
-		color: '#111827',
 	},
 
 	cancelButton: {
 		height: 48,
 		borderRadius: 16,
-		backgroundColor: '#F3F4F6',
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
@@ -185,6 +202,5 @@ const styles = StyleSheet.create({
 	cancelText: {
 		fontSize: 16,
 		fontWeight: '600',
-		color: '#6B7280',
 	},
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
 	View,
 	Text,
@@ -12,6 +12,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { ThemeContext } from '../src/context/ThemeContext';
 
 const GOALS_STORAGE_KEY = 'fitly_goals';
 
@@ -24,6 +25,8 @@ type GoalsState = {
 };
 
 export default function GoalsScreen() {
+	const { colors, isDark } = useContext(ThemeContext);
+
 	const [goals, setGoals] = useState<GoalsState>({
 		stepsGoal: '',
 		calorieGoal: '',
@@ -74,7 +77,16 @@ export default function GoalsScreen() {
 	};
 
 	const handleChange = (field: keyof GoalsState, value: string) => {
-		const normalized = value.replace(/[^0-9]/g, '');
+		let normalized = value;
+
+		if (field === 'waterGoal') {
+			normalized = value
+				.replace(',', '.')
+				.replace(/[^0-9.]/g, '')
+				.replace(/(\..*)\./g, '$1');
+		} else {
+			normalized = value.replace(/[^0-9]/g, '');
+		}
 
 		setGoals(prev => ({
 			...prev,
@@ -154,17 +166,27 @@ export default function GoalsScreen() {
 	};
 
 	return (
-		<SafeAreaView style={styles.safeArea}>
-			<View style={styles.header}>
+		<SafeAreaView
+			style={[styles.safeArea, { backgroundColor: colors.background }]}
+		>
+			<View
+				style={[
+					styles.header,
+					{
+						backgroundColor: colors.background,
+						borderBottomColor: colors.border,
+					},
+				]}
+			>
 				<TouchableOpacity
 					style={styles.backButton}
 					onPress={() => router.back()}
 					activeOpacity={0.8}
 				>
-					<Ionicons name='arrow-back' size={26} color='#20C07A' />
+					<Ionicons name='arrow-back' size={26} color={colors.primary} />
 				</TouchableOpacity>
 
-				<Text style={styles.headerTitle}>Цели</Text>
+				<Text style={[styles.headerTitle, { color: colors.text }]}>Цели</Text>
 
 				<View style={styles.headerSpacer} />
 			</View>
@@ -173,119 +195,247 @@ export default function GoalsScreen() {
 				showsVerticalScrollIndicator={false}
 				contentContainerStyle={styles.content}
 			>
-				<View style={styles.heroCard}>
-					<View style={styles.heroIcon}>
-						<Feather name='target' size={20} color='#20C07A' />
+				<View
+					style={[
+						styles.heroCard,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
+					<View
+						style={[
+							styles.heroIcon,
+							{
+								backgroundColor: colors.iconBg,
+							},
+						]}
+					>
+						<Feather name='target' size={20} color={colors.primary} />
 					</View>
 
 					<View style={styles.heroTextWrap}>
-						<Text style={styles.heroTitle}>Настрой свои цели</Text>
-						<Text style={styles.heroSubtitle}>
+						<Text style={[styles.heroTitle, { color: colors.text }]}>
+							Настрой свои цели
+						</Text>
+						<Text
+							style={[styles.heroSubtitle, { color: colors.textSecondary }]}
+						>
 							Показатели будут отображаться на главной
 						</Text>
 					</View>
 				</View>
 
-				<View style={styles.sectionCard}>
+				<View
+					style={[
+						styles.sectionCard,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
 					<View style={styles.sectionTop}>
-						<View style={styles.sectionIcon}>
-							<Ionicons name='walk-outline' size={18} color='#20C07A' />
+						<View
+							style={[styles.sectionIcon, { backgroundColor: colors.iconBg }]}
+						>
+							<Ionicons name='walk-outline' size={18} color={colors.primary} />
 						</View>
-						<Text style={styles.sectionName}>Активность</Text>
+						<Text style={[styles.sectionName, { color: colors.text }]}>
+							Активность
+						</Text>
 					</View>
 
-					<Text style={styles.label}>Цель по шагам</Text>
+					<Text style={[styles.label, { color: colors.textSecondary }]}>
+						Цель по шагам
+					</Text>
 					<TextInput
-						style={styles.input}
+						style={[
+							styles.input,
+							{
+								borderColor: colors.border,
+								backgroundColor: colors.cardSecondary,
+								color: colors.text,
+							},
+						]}
 						value={goals.stepsGoal}
 						onChangeText={value => handleChange('stepsGoal', value)}
 						keyboardType='numeric'
 						placeholder='Например, 10000'
-						placeholderTextColor='#A0A7B5'
+						placeholderTextColor={colors.textMuted}
 					/>
 				</View>
 
-				<View style={styles.sectionCard}>
+				<View
+					style={[
+						styles.sectionCard,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
 					<View style={styles.sectionTop}>
-						<View style={styles.sectionIcon}>
+						<View
+							style={[styles.sectionIcon, { backgroundColor: colors.iconBg }]}
+						>
 							<MaterialIcons
 								name='local-fire-department'
 								size={18}
-								color='#F2B544'
+								color={colors.warning}
 							/>
 						</View>
-						<Text style={styles.sectionName}>Питание</Text>
+						<Text style={[styles.sectionName, { color: colors.text }]}>
+							Питание
+						</Text>
 					</View>
 
-					<Text style={styles.label}>Цель по калориям</Text>
+					<Text style={[styles.label, { color: colors.textSecondary }]}>
+						Цель по калориям
+					</Text>
 					<TextInput
-						style={styles.input}
+						style={[
+							styles.input,
+							{
+								borderColor: colors.border,
+								backgroundColor: colors.cardSecondary,
+								color: colors.text,
+							},
+						]}
 						value={goals.calorieGoal}
 						onChangeText={value => handleChange('calorieGoal', value)}
 						keyboardType='numeric'
 						placeholder='Например, 2300'
-						placeholderTextColor='#A0A7B5'
+						placeholderTextColor={colors.textMuted}
 					/>
 				</View>
 
-				<View style={styles.sectionCard}>
+				<View
+					style={[
+						styles.sectionCard,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
 					<View style={styles.sectionTop}>
-						<View style={styles.sectionIcon}>
-							<Ionicons name='water-outline' size={18} color='#6F9BFF' />
+						<View
+							style={[styles.sectionIcon, { backgroundColor: colors.iconBg }]}
+						>
+							<Ionicons name='water-outline' size={18} color={colors.blue} />
 						</View>
-						<Text style={styles.sectionName}>Вода</Text>
+						<Text style={[styles.sectionName, { color: colors.text }]}>
+							Вода
+						</Text>
 					</View>
 
-					<Text style={styles.label}>Цель по воде (литры)</Text>
+					<Text style={[styles.label, { color: colors.textSecondary }]}>
+						Цель по воде (литры)
+					</Text>
 					<TextInput
-						style={styles.input}
+						style={[
+							styles.input,
+							{
+								borderColor: colors.border,
+								backgroundColor: colors.cardSecondary,
+								color: colors.text,
+							},
+						]}
 						value={goals.waterGoal}
 						onChangeText={value => handleChange('waterGoal', value)}
-						keyboardType='numeric'
-						placeholder='Например, 2'
-						placeholderTextColor='#A0A7B5'
+						keyboardType='decimal-pad'
+						placeholder='Например, 2.5'
+						placeholderTextColor={colors.textMuted}
 					/>
 				</View>
 
-				<View style={styles.sectionCard}>
+				<View
+					style={[
+						styles.sectionCard,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
 					<View style={styles.sectionTop}>
-						<View style={styles.sectionIcon}>
-							<Ionicons name='barbell-outline' size={18} color='#F2B544' />
+						<View
+							style={[styles.sectionIcon, { backgroundColor: colors.iconBg }]}
+						>
+							<Ionicons
+								name='barbell-outline'
+								size={18}
+								color={colors.warning}
+							/>
 						</View>
-						<Text style={styles.sectionName}>Тело</Text>
+						<Text style={[styles.sectionName, { color: colors.text }]}>
+							Тело
+						</Text>
 					</View>
 
-					<Text style={styles.label}>Целевой вес</Text>
+					<Text style={[styles.label, { color: colors.textSecondary }]}>
+						Целевой вес
+					</Text>
 					<TextInput
-						style={styles.input}
+						style={[
+							styles.input,
+							{
+								borderColor: colors.border,
+								backgroundColor: colors.cardSecondary,
+								color: colors.text,
+							},
+						]}
 						value={goals.weightGoal}
 						onChangeText={value => handleChange('weightGoal', value)}
 						keyboardType='numeric'
 						placeholder='Например, 75'
-						placeholderTextColor='#A0A7B5'
+						placeholderTextColor={colors.textMuted}
 					/>
 				</View>
 
-				<View style={styles.sectionCard}>
+				<View
+					style={[
+						styles.sectionCard,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
 					<View style={styles.sectionTop}>
-						<View style={styles.sectionIcon}>
-							<Ionicons name='moon' size={18} color='#6F9BFF' />
+						<View
+							style={[styles.sectionIcon, { backgroundColor: colors.iconBg }]}
+						>
+							<Ionicons name='moon' size={18} color={colors.blue} />
 						</View>
-						<Text style={styles.sectionName}>Сон</Text>
+						<Text style={[styles.sectionName, { color: colors.text }]}>
+							Сон
+						</Text>
 					</View>
 
-					<Text style={styles.label}>Цель сна (часы)</Text>
+					<Text style={[styles.label, { color: colors.textSecondary }]}>
+						Цель сна (часы)
+					</Text>
 					<View style={styles.sleepGoalGrid}>
 						{Array.from({ length: 24 }, (_, index) => {
 							const hour = String(index + 1);
+							const isActive = goals.sleepGoalHours === hour;
 
 							return (
 								<TouchableOpacity
 									key={hour}
 									style={[
 										styles.sleepGoalOption,
-										goals.sleepGoalHours === hour &&
-											styles.sleepGoalOptionActive,
+										{
+											backgroundColor: isActive
+												? isDark
+													? colors.iconBg
+													: '#EEF9F3'
+												: colors.cardSecondary,
+											borderColor: isActive ? colors.primary : colors.border,
+										},
 									]}
 									onPress={() =>
 										setGoals(prev => ({
@@ -298,8 +448,9 @@ export default function GoalsScreen() {
 									<Text
 										style={[
 											styles.sleepGoalOptionText,
-											goals.sleepGoalHours === hour &&
-												styles.sleepGoalOptionTextActive,
+											{
+												color: isActive ? colors.primary : colors.textSecondary,
+											},
 										]}
 									>
 										{hour}
@@ -311,7 +462,11 @@ export default function GoalsScreen() {
 				</View>
 
 				<TouchableOpacity
-					style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+					style={[
+						styles.saveButton,
+						{ backgroundColor: colors.primary },
+						isSaving && styles.saveButtonDisabled,
+					]}
 					onPress={saveGoals}
 					activeOpacity={0.85}
 					disabled={isSaving}
@@ -328,7 +483,6 @@ export default function GoalsScreen() {
 const styles = StyleSheet.create({
 	safeArea: {
 		flex: 1,
-		backgroundColor: '#F4F4F4',
 	},
 	header: {
 		height: 96,
@@ -338,8 +492,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'space-between',
 		borderBottomWidth: 1,
-		borderBottomColor: '#ECECEC',
-		backgroundColor: '#F4F4F4',
 	},
 	backButton: {
 		width: 40,
@@ -350,7 +502,6 @@ const styles = StyleSheet.create({
 	headerTitle: {
 		fontSize: 18,
 		fontWeight: '700',
-		color: '#1F2937',
 	},
 	headerSpacer: {
 		width: 40,
@@ -363,16 +514,18 @@ const styles = StyleSheet.create({
 	},
 	heroCard: {
 		flexDirection: 'row',
-		backgroundColor: '#fff',
 		borderRadius: 20,
 		padding: 14,
 		marginBottom: 14,
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
+		elevation: 3,
 	},
 	heroIcon: {
 		width: 42,
 		height: 42,
 		borderRadius: 21,
-		backgroundColor: '#EEF9F3',
 		alignItems: 'center',
 		justifyContent: 'center',
 		marginRight: 10,
@@ -383,18 +536,19 @@ const styles = StyleSheet.create({
 	heroTitle: {
 		fontSize: 16,
 		fontWeight: '700',
-		color: '#1F2937',
 	},
 	heroSubtitle: {
 		fontSize: 13,
-		color: '#6B7280',
 		lineHeight: 18,
 	},
 	sectionCard: {
-		backgroundColor: '#fff',
 		borderRadius: 20,
 		padding: 16,
 		marginBottom: 14,
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
+		elevation: 3,
 	},
 	sectionTop: {
 		flexDirection: 'row',
@@ -405,7 +559,6 @@ const styles = StyleSheet.create({
 		width: 34,
 		height: 34,
 		borderRadius: 17,
-		backgroundColor: '#F8FAFC',
 		alignItems: 'center',
 		justifyContent: 'center',
 		marginRight: 10,
@@ -413,24 +566,19 @@ const styles = StyleSheet.create({
 	sectionName: {
 		fontSize: 16,
 		fontWeight: '700',
-		color: '#1F2937',
 	},
 	label: {
 		fontSize: 14,
 		fontWeight: '600',
-		color: '#374151',
 		marginBottom: 6,
 		marginTop: 8,
 	},
 	input: {
 		height: 48,
 		borderWidth: 1,
-		borderColor: '#E5E7EB',
 		borderRadius: 12,
 		paddingHorizontal: 12,
 		fontSize: 16,
-		color: '#111827',
-		backgroundColor: '#FAFAFA',
 	},
 	sleepGoalGrid: {
 		flexDirection: 'row',
@@ -442,28 +590,17 @@ const styles = StyleSheet.create({
 		width: 46,
 		height: 40,
 		borderRadius: 12,
-		backgroundColor: '#FAFAFA',
 		borderWidth: 1,
-		borderColor: '#E5E7EB',
 		alignItems: 'center',
 		justifyContent: 'center',
-	},
-	sleepGoalOptionActive: {
-		backgroundColor: '#EEF9F3',
-		borderColor: '#20C07A',
 	},
 	sleepGoalOptionText: {
 		fontSize: 14,
 		fontWeight: '600',
-		color: '#6B7280',
-	},
-	sleepGoalOptionTextActive: {
-		color: '#20C07A',
 	},
 	saveButton: {
 		height: 54,
 		borderRadius: 16,
-		backgroundColor: '#20C07A',
 		alignItems: 'center',
 		justifyContent: 'center',
 		marginTop: 6,

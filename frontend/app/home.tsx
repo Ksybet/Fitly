@@ -22,6 +22,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { AuthContext } from '../src/context/AuthContext';
+import { ThemeContext } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
 
 const GOALS_STORAGE_KEY = 'fitly_goals';
@@ -61,6 +62,10 @@ type QuickEditField = 'steps' | 'calories' | 'water' | null;
 type StepsProgressCircleProps = {
 	value: number;
 	goal: number | null;
+	trackColor: string;
+	progressColor: string;
+	textColor: string;
+	labelColor: string;
 };
 
 type FavoriteKey = 'water' | 'weight';
@@ -73,7 +78,14 @@ const DEFAULT_FAVORITES: FavoritesState = {
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-function StepsProgressCircle({ value, goal }: StepsProgressCircleProps) {
+function StepsProgressCircle({
+	value,
+	goal,
+	trackColor,
+	progressColor,
+	textColor,
+	labelColor,
+}: StepsProgressCircleProps) {
 	const size = 100;
 	const strokeWidth = 8;
 	const radius = (size - strokeWidth) / 2;
@@ -107,7 +119,7 @@ function StepsProgressCircle({ value, goal }: StepsProgressCircleProps) {
 					cx={size / 2}
 					cy={size / 2}
 					r={radius}
-					stroke='#E5E7EB'
+					stroke={trackColor}
 					strokeWidth={strokeWidth}
 					fill='none'
 				/>
@@ -116,7 +128,7 @@ function StepsProgressCircle({ value, goal }: StepsProgressCircleProps) {
 					cx={size / 2}
 					cy={size / 2}
 					r={radius}
-					stroke='#20C07A'
+					stroke={progressColor}
 					strokeWidth={strokeWidth}
 					fill='none'
 					strokeDasharray={`${circumference} ${circumference}`}
@@ -128,8 +140,10 @@ function StepsProgressCircle({ value, goal }: StepsProgressCircleProps) {
 			</Svg>
 
 			<View style={styles.stepsCircleContent}>
-				<Text style={styles.stepsValue}>{value > 0 ? value : '—'}</Text>
-				<Text style={styles.stepsLabel}>
+				<Text style={[styles.stepsValue, { color: textColor }]}>
+					{value > 0 ? value : '—'}
+				</Text>
+				<Text style={[styles.stepsLabel, { color: labelColor }]}>
 					{value > 0 ? 'шагов' : 'нет данных'}
 				</Text>
 			</View>
@@ -140,6 +154,7 @@ function StepsProgressCircle({ value, goal }: StepsProgressCircleProps) {
 export default function HomeScreen() {
 	const insets = useSafeAreaInsets();
 	const { user } = useContext(AuthContext);
+	const { colors, isDark } = useContext(ThemeContext);
 
 	const userName =
 		user?.firstName || user?.name || user?.email?.split('@')[0] || 'Алексей';
@@ -465,7 +480,7 @@ export default function HomeScreen() {
 		dailyData.moodScore !== null ? `${dailyData.moodScore} / 10` : '';
 
 	return (
-		<View style={styles.container}>
+		<View style={[styles.container, { backgroundColor: colors.background }]}>
 			<ScrollView
 				contentContainerStyle={[
 					styles.scrollContent,
@@ -478,13 +493,19 @@ export default function HomeScreen() {
 			>
 				<View style={styles.header}>
 					<View style={styles.brandRow}>
-						<Text style={styles.logo}>Fitly</Text>
+						<Text style={[styles.logo, { color: colors.primary }]}>Fitly</Text>
 
-						<TouchableOpacity style={styles.headerIcon} activeOpacity={0.8}>
+						<TouchableOpacity
+							style={[
+								styles.headerIcon,
+								{ backgroundColor: isDark ? colors.cardSecondary : '#F1F1F1' },
+							]}
+							activeOpacity={0.8}
+						>
 							<Ionicons
 								name='notifications-outline'
 								size={22}
-								color='#9CA3AF'
+								color={colors.textMuted}
 							/>
 						</TouchableOpacity>
 					</View>
@@ -492,8 +513,12 @@ export default function HomeScreen() {
 
 				<View style={styles.greetingRow}>
 					<View style={styles.greetingTextBlock}>
-						<Text style={styles.greetingTitle}>Привет, {userName}!</Text>
-						<Text style={styles.greetingSubtitle}>
+						<Text style={[styles.greetingTitle, { color: colors.text }]}>
+							Привет, {userName}!
+						</Text>
+						<Text
+							style={[styles.greetingSubtitle, { color: colors.textMuted }]}
+						>
 							Вот твои показатели на сегодня
 						</Text>
 					</View>
@@ -503,8 +528,13 @@ export default function HomeScreen() {
 						activeOpacity={0.8}
 						onPress={() => router.push('/goals' as any)}
 					>
-						<View style={styles.targetIconWrapper}>
-							<Feather name='target' size={22} color='#20C07A' />
+						<View
+							style={[
+								styles.targetIconWrapper,
+								{ backgroundColor: isDark ? colors.iconBg : '#F0FBF6' },
+							]}
+						>
+							<Feather name='target' size={22} color={colors.primary} />
 						</View>
 					</TouchableOpacity>
 				</View>
@@ -512,28 +542,43 @@ export default function HomeScreen() {
 				<View style={styles.statsRow}>
 					<TouchableOpacity
 						activeOpacity={0.9}
-						style={[styles.card, styles.stepsCard]}
+						style={[
+							styles.card,
+							styles.stepsCard,
+							{ backgroundColor: colors.card, shadowColor: colors.shadow },
+						]}
 						onPress={() => openQuickEdit('steps')}
 					>
-						<Ionicons name='walk-outline' size={18} color='#20C07A' />
+						<Ionicons name='walk-outline' size={18} color={colors.primary} />
 
 						<View style={styles.stepsCircleWrapper}>
 							<StepsProgressCircle
 								value={dailyData.steps}
 								goal={goals.stepsGoal}
+								trackColor={colors.track}
+								progressColor={colors.primary}
+								textColor={colors.text}
+								labelColor={colors.textMuted}
 							/>
 						</View>
 
 						{goals.stepsGoal ? (
 							<>
-								<Text style={styles.stepsGoalText}>
+								<Text
+									style={[styles.stepsGoalText, { color: colors.textMuted }]}
+								>
 									Цель: {goals.stepsGoal}
 								</Text>
-								<View style={styles.stepsTrack}>
+								<View
+									style={[styles.stepsTrack, { backgroundColor: colors.track }]}
+								>
 									<View
 										style={[
 											styles.stepsFill,
-											{ width: `${stepsProgressPercent}%` },
+											{
+												width: `${stepsProgressPercent}%`,
+												backgroundColor: colors.primary,
+											},
 										]}
 									/>
 								</View>
@@ -544,34 +589,50 @@ export default function HomeScreen() {
 					<View style={styles.rightStats}>
 						<TouchableOpacity
 							activeOpacity={0.9}
-							style={styles.smallCard}
+							style={[
+								styles.smallCard,
+								{ backgroundColor: colors.card, shadowColor: colors.shadow },
+							]}
 							onPress={() => router.push('/sleep' as any)}
 						>
-							<Ionicons name='moon' size={16} color='#6F9BFF' />
+							<Ionicons name='moon' size={16} color={colors.blue} />
 
-							<Text style={styles.smallMainValue}>
+							<Text style={[styles.smallMainValue, { color: colors.text }]}>
 								{hasSleep
 									? `${dailyData.sleepHours} ч ${dailyData.sleepMinutes} м`
 									: '—'}
 							</Text>
 
-							<Text style={styles.smallAccentText}>
+							<Text style={[styles.smallAccentText, { color: colors.blue }]}>
 								{hasSleep
 									? dailyData.sleepQuality || 'Без оценки'
 									: 'Нет данных'}
 							</Text>
 
 							{goals.sleepGoalHours ? (
-								<View style={styles.sleepTrack}>
+								<View
+									style={[styles.sleepTrack, { backgroundColor: colors.track }]}
+								>
 									<View
-										style={[styles.sleepFill, { width: `${sleepProgress}%` }]}
+										style={[
+											styles.sleepFill,
+											{
+												width: `${sleepProgress}%`,
+												backgroundColor: colors.blue,
+											},
+										]}
 									/>
 								</View>
 							) : (
-								<View style={styles.sleepBar} />
+								<View
+									style={[
+										styles.sleepBar,
+										{ backgroundColor: isDark ? '#324A68' : '#D9E6FF' },
+									]}
+								/>
 							)}
 
-							<Text style={styles.smallHint}>
+							<Text style={[styles.smallHint, { color: colors.textMuted }]}>
 								{hasSleep
 									? `${dailyData.sleepStart} — ${dailyData.sleepEnd}`
 									: 'Добавьте данные о сне'}
@@ -580,29 +641,45 @@ export default function HomeScreen() {
 
 						<TouchableOpacity
 							activeOpacity={0.9}
-							style={styles.smallCard}
+							style={[
+								styles.smallCard,
+								{ backgroundColor: colors.card, shadowColor: colors.shadow },
+							]}
 							onPress={() => openQuickEdit('calories')}
 						>
-							<Ionicons name='flame-outline' size={16} color='#F2B544' />
+							<Ionicons name='flame-outline' size={16} color={colors.warning} />
 
 							<View style={styles.kcalRow}>
-								<Text style={styles.smallMainValue}>
+								<Text style={[styles.smallMainValue, { color: colors.text }]}>
 									{hasCalories ? dailyData.calories : '—'}
 								</Text>
-								<Text style={styles.kcalText}> ккал</Text>
+								<Text
+									style={[styles.kcalText, { color: colors.textSecondary }]}
+								>
+									{' '}
+									ккал
+								</Text>
 							</View>
 
 							{goals.calorieGoal ? (
 								<>
-									<Text style={styles.smallHint}>
+									<Text style={[styles.smallHint, { color: colors.textMuted }]}>
 										Цель: {goals.calorieGoal}
 									</Text>
 
-									<View style={styles.caloriesTrack}>
+									<View
+										style={[
+											styles.caloriesTrack,
+											{ backgroundColor: colors.track },
+										]}
+									>
 										<View
 											style={[
 												styles.caloriesFill,
-												{ width: `${caloriesProgress}%` },
+												{
+													width: `${caloriesProgress}%`,
+													backgroundColor: colors.warning,
+												},
 											]}
 										/>
 									</View>
@@ -614,39 +691,56 @@ export default function HomeScreen() {
 
 				<View style={styles.actionsRow}>
 					<ActionButton
-						icon={<MaterialIcons name='restaurant' size={22} color='#F2B544' />}
+						icon={
+							<MaterialIcons
+								name='restaurant'
+								size={22}
+								color={colors.warning}
+							/>
+						}
 						label='Питание'
 					/>
 
 					<ActionButton
-						icon={<FontAwesome5 name='dumbbell' size={18} color='#6F9BFF' />}
-						label='Тренировка'
-					/>
-
-					<ActionButton
-						icon={<Ionicons name='heart' size={20} color='#F36F6F' />}
+						icon={<Ionicons name='heart' size={20} color={colors.danger} />}
 						label='Состояние'
 					/>
 				</View>
 
 				<View style={styles.section}>
 					<View style={styles.sectionHeader}>
-						<Text style={styles.sectionTitle}>Дневник состояния</Text>
+						<Text style={[styles.sectionTitle, { color: colors.text }]}>
+							Дневник состояния
+						</Text>
 					</View>
 
 					<TouchableOpacity
-						style={styles.diaryCard}
+						style={[
+							styles.diaryCard,
+							{ backgroundColor: colors.card, shadowColor: colors.shadow },
+						]}
 						activeOpacity={0.9}
 						onPress={() => router.push('/mood' as any)}
 					>
 						<View style={styles.diaryLeft}>
-							<View style={styles.moodEmojiCircle}>
+							<View
+								style={[
+									styles.moodEmojiCircle,
+									{
+										backgroundColor: isDark ? colors.cardSecondary : '#F3F4F6',
+									},
+								]}
+							>
 								<Text style={styles.moodEmojiText}>{currentMoodEmoji}</Text>
 							</View>
 
 							<View style={styles.diaryTextWrap}>
-								<Text style={styles.diaryText}>{currentMoodLabel}</Text>
-								<Text style={styles.diarySubtext}>
+								<Text style={[styles.diaryText, { color: colors.text }]}>
+									{currentMoodLabel}
+								</Text>
+								<Text
+									style={[styles.diarySubtext, { color: colors.textMuted }]}
+								>
 									{dailyData.moodScore !== null
 										? 'Нажми, чтобы изменить настроение'
 										: 'Нажми, чтобы выбрать настроение'}
@@ -655,9 +749,15 @@ export default function HomeScreen() {
 
 							<View style={styles.diaryRight}>
 								{currentMoodScore ? (
-									<Text style={styles.diaryScore}>{currentMoodScore}</Text>
+									<Text style={[styles.diaryScore, { color: colors.primary }]}>
+										{currentMoodScore}
+									</Text>
 								) : null}
-								<Ionicons name='chevron-forward' size={18} color='#9CA3AF' />
+								<Ionicons
+									name='chevron-forward'
+									size={18}
+									color={colors.textMuted}
+								/>
 							</View>
 						</View>
 					</TouchableOpacity>
@@ -665,29 +765,51 @@ export default function HomeScreen() {
 
 				<View style={styles.section}>
 					<View style={styles.sectionHeader}>
-						<Text style={styles.sectionTitle}>Избранное</Text>
+						<Text style={[styles.sectionTitle, { color: colors.text }]}>
+							Избранное
+						</Text>
 
 						<TouchableOpacity
 							activeOpacity={0.8}
 							onPress={() => router.push('/favorites' as any)}
 						>
-							<MaterialIcons name='menu' size={22} color='#4B5563' />
+							<MaterialIcons
+								name='menu'
+								size={22}
+								color={colors.textSecondary}
+							/>
 						</TouchableOpacity>
 					</View>
 
 					<View style={styles.favoritesRow}>
 						{favorites.water ? (
 							<TouchableOpacity
-								style={styles.favoriteCard}
+								style={[
+									styles.favoriteCard,
+									{ backgroundColor: colors.card, shadowColor: colors.shadow },
+								]}
 								activeOpacity={0.9}
 								onPress={() => openQuickEdit('water')}
 							>
 								<View style={styles.favoriteTopRow}>
-									<Ionicons name='water-outline' size={18} color='#6F9BFF' />
-									<Text style={styles.favoriteTitle}>Вода</Text>
+									<Ionicons
+										name='water-outline'
+										size={18}
+										color={colors.blue}
+									/>
+									<Text
+										style={[styles.favoriteTitle, { color: colors.textMuted }]}
+									>
+										Вода
+									</Text>
 								</View>
 
-								<Text style={styles.favoriteValue}>
+								<Text
+									style={[
+										styles.favoriteValue,
+										{ color: colors.textSecondary },
+									]}
+								>
 									{dailyData.waterCurrent !== null
 										? `${String(dailyData.waterCurrent).replace('.', ',')} л`
 										: '—'}
@@ -697,13 +819,18 @@ export default function HomeScreen() {
 								</Text>
 
 								{goals.waterGoal ? (
-									<View style={styles.favoriteTrack}>
+									<View
+										style={[
+											styles.favoriteTrack,
+											{ backgroundColor: colors.track },
+										]}
+									>
 										<View
 											style={[
 												styles.favoriteFill,
 												{
 													width: `${waterProgress}%`,
-													backgroundColor: '#6F9BFF',
+													backgroundColor: colors.blue,
 												},
 											]}
 										/>
@@ -713,13 +840,31 @@ export default function HomeScreen() {
 						) : null}
 
 						{favorites.weight ? (
-							<View style={styles.favoriteCard}>
+							<View
+								style={[
+									styles.favoriteCard,
+									{ backgroundColor: colors.card, shadowColor: colors.shadow },
+								]}
+							>
 								<View style={styles.favoriteTopRow}>
-									<Ionicons name='barbell-outline' size={18} color='#F2B544' />
-									<Text style={styles.favoriteTitle}>Вес</Text>
+									<Ionicons
+										name='barbell-outline'
+										size={18}
+										color={colors.warning}
+									/>
+									<Text
+										style={[styles.favoriteTitle, { color: colors.textMuted }]}
+									>
+										Вес
+									</Text>
 								</View>
 
-								<Text style={styles.favoriteValue}>
+								<Text
+									style={[
+										styles.favoriteValue,
+										{ color: colors.textSecondary },
+									]}
+								>
 									{hasWeight ? currentWeight : '—'}
 									{hasWeight && goals.weightGoal
 										? ` / ${goals.weightGoal}`
@@ -728,13 +873,18 @@ export default function HomeScreen() {
 								</Text>
 
 								{goals.weightGoal && hasWeight ? (
-									<View style={styles.favoriteTrack}>
+									<View
+										style={[
+											styles.favoriteTrack,
+											{ backgroundColor: colors.track },
+										]}
+									>
 										<View
 											style={[
 												styles.favoriteFill,
 												{
 													width: `${weightProgress}%`,
-													backgroundColor: '#F2B544',
+													backgroundColor: colors.warning,
 												},
 											]}
 										/>
@@ -750,16 +900,31 @@ export default function HomeScreen() {
 
 			<Modal visible={!!quickEditField} transparent animationType='fade'>
 				<View style={styles.modalOverlay}>
-					<View style={styles.modalCard}>
-						<Text style={styles.modalTitle}>{quickEditTitle}</Text>
+					<View
+						style={[
+							styles.modalCard,
+							{ backgroundColor: colors.card, shadowColor: colors.shadow },
+						]}
+					>
+						<Text style={[styles.modalTitle, { color: colors.text }]}>
+							{quickEditTitle}
+						</Text>
 
-						<Text style={styles.modalSubtitle}>
+						<Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
 							Введите текущее значение в {quickEditUnit}
 						</Text>
 
-						<View style={styles.modalInputWrap}>
+						<View
+							style={[
+								styles.modalInputWrap,
+								{
+									borderColor: colors.border,
+									backgroundColor: colors.cardSecondary,
+								},
+							]}
+						>
 							<TextInput
-								style={styles.modalInput}
+								style={[styles.modalInput, { color: colors.text }]}
 								value={quickEditValue}
 								onChangeText={text => {
 									if (quickEditField === 'water') {
@@ -778,26 +943,47 @@ export default function HomeScreen() {
 									quickEditField === 'water' ? 'decimal-pad' : 'numeric'
 								}
 								placeholder={quickEditPlaceholder}
-								placeholderTextColor='#A0A7B5'
+								placeholderTextColor={colors.textMuted}
 								autoFocus
 								maxLength={6}
 							/>
 
-							<Text style={styles.modalInputUnit}>{quickEditUnit}</Text>
+							<Text
+								style={[styles.modalInputUnit, { color: colors.textMuted }]}
+							>
+								{quickEditUnit}
+							</Text>
 						</View>
 
 						<View style={styles.modalButtons}>
 							<TouchableOpacity
-								style={[styles.modalButton, styles.modalCancelButton]}
+								style={[
+									styles.modalButton,
+									styles.modalCancelButton,
+									{
+										backgroundColor: isDark ? colors.cardSecondary : '#F3F4F6',
+									},
+								]}
 								onPress={closeQuickEdit}
 								activeOpacity={0.85}
 								disabled={isSavingQuickEdit}
 							>
-								<Text style={styles.modalCancelText}>Отмена</Text>
+								<Text
+									style={[
+										styles.modalCancelText,
+										{ color: colors.textSecondary },
+									]}
+								>
+									Отмена
+								</Text>
 							</TouchableOpacity>
 
 							<TouchableOpacity
-								style={[styles.modalButton, styles.modalSaveButton]}
+								style={[
+									styles.modalButton,
+									styles.modalSaveButton,
+									{ backgroundColor: colors.primary },
+								]}
 								onPress={saveQuickEdit}
 								activeOpacity={0.85}
 								disabled={isSavingQuickEdit}
@@ -815,14 +1001,26 @@ export default function HomeScreen() {
 }
 
 function ActionButton({ icon, label, onPress }: ActionButtonProps) {
+	const { colors, isDark } = useContext(ThemeContext);
+
 	return (
 		<TouchableOpacity
-			style={styles.actionButton}
+			style={[
+				styles.actionButton,
+				{ backgroundColor: colors.card, shadowColor: colors.shadow },
+			]}
 			onPress={onPress}
 			activeOpacity={0.82}
 		>
 			<View style={styles.actionIcon}>{icon}</View>
-			<Text style={styles.actionLabel}>{label}</Text>
+			<Text
+				style={[
+					styles.actionLabel,
+					{ color: isDark ? colors.textSecondary : '#6B7280' },
+				]}
+			>
+				{label}
+			</Text>
 		</TouchableOpacity>
 	);
 }
@@ -830,7 +1028,6 @@ function ActionButton({ icon, label, onPress }: ActionButtonProps) {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#F3F3F3',
 	},
 
 	scrollContent: {
@@ -849,7 +1046,6 @@ const styles = StyleSheet.create({
 	logo: {
 		fontSize: 30,
 		fontWeight: '700',
-		color: '#20C07A',
 	},
 
 	headerIcon: {
@@ -859,7 +1055,6 @@ const styles = StyleSheet.create({
 		width: 34,
 		height: 34,
 		borderRadius: 17,
-		backgroundColor: '#F1F1F1',
 		justifyContent: 'center',
 		alignItems: 'center',
 	},
@@ -883,7 +1078,6 @@ const styles = StyleSheet.create({
 
 	greetingSubtitle: {
 		fontSize: 12,
-		color: '#9AA0A6',
 	},
 
 	targetButton: {
@@ -895,7 +1089,6 @@ const styles = StyleSheet.create({
 		width: 42,
 		height: 42,
 		borderRadius: 21,
-		backgroundColor: '#F0FBF6',
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
@@ -907,12 +1100,10 @@ const styles = StyleSheet.create({
 	},
 
 	card: {
-		backgroundColor: '#fff',
 		borderRadius: 20,
 		padding: 12,
-		shadowColor: '#000',
-		shadowOpacity: 0.06,
-		shadowRadius: 8,
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 3,
 	},
@@ -948,17 +1139,14 @@ const styles = StyleSheet.create({
 	stepsValue: {
 		fontSize: 24,
 		fontWeight: '700',
-		color: '#1F2937',
 	},
 
 	stepsLabel: {
 		fontSize: 13,
-		color: '#6B7280',
 	},
 
 	stepsGoalText: {
 		fontSize: 12,
-		color: '#9AA0A6',
 		marginTop: 6,
 		marginBottom: 6,
 		textAlign: 'center',
@@ -966,14 +1154,12 @@ const styles = StyleSheet.create({
 
 	stepsTrack: {
 		height: 6,
-		backgroundColor: '#E5E7EB',
 		borderRadius: 4,
 		overflow: 'hidden',
 	},
 
 	stepsFill: {
 		height: '100%',
-		backgroundColor: '#20C07A',
 		borderRadius: 4,
 	},
 
@@ -983,13 +1169,11 @@ const styles = StyleSheet.create({
 	},
 
 	smallCard: {
-		backgroundColor: '#fff',
 		borderRadius: 20,
 		padding: 12,
 		minHeight: 110,
-		shadowColor: '#000',
-		shadowOpacity: 0.06,
-		shadowRadius: 8,
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 3,
 	},
@@ -997,26 +1181,22 @@ const styles = StyleSheet.create({
 	smallMainValue: {
 		fontSize: 22,
 		fontWeight: '700',
-		color: '#1F2937',
 	},
 
 	smallAccentText: {
 		fontSize: 13,
-		color: '#6F9BFF',
 		marginTop: 2,
 	},
 
 	sleepBar: {
 		height: 4,
 		width: 60,
-		backgroundColor: '#D9E6FF',
 		marginVertical: 6,
 		borderRadius: 4,
 	},
 
 	sleepTrack: {
 		height: 6,
-		backgroundColor: '#E5E7EB',
 		borderRadius: 4,
 		marginVertical: 6,
 		overflow: 'hidden',
@@ -1024,13 +1204,11 @@ const styles = StyleSheet.create({
 
 	sleepFill: {
 		height: '100%',
-		backgroundColor: '#6F9BFF',
 		borderRadius: 4,
 	},
 
 	smallHint: {
 		fontSize: 12,
-		color: '#9AA0A6',
 	},
 
 	kcalRow: {
@@ -1040,13 +1218,11 @@ const styles = StyleSheet.create({
 
 	kcalText: {
 		fontSize: 14,
-		color: '#374151',
 		marginTop: 4,
 	},
 
 	caloriesTrack: {
 		height: 6,
-		backgroundColor: '#E5E7EB',
 		borderRadius: 4,
 		marginTop: 8,
 		overflow: 'hidden',
@@ -1054,7 +1230,6 @@ const styles = StyleSheet.create({
 
 	caloriesFill: {
 		height: '100%',
-		backgroundColor: '#F2B544',
 	},
 
 	actionsRow: {
@@ -1064,15 +1239,13 @@ const styles = StyleSheet.create({
 	},
 
 	actionButton: {
-		width: '31.5%',
+		width: '48%',
 		height: 90,
-		backgroundColor: '#fff',
 		borderRadius: 14,
 		alignItems: 'center',
 		justifyContent: 'center',
-		shadowColor: '#000',
-		shadowOpacity: 0.05,
-		shadowRadius: 6,
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 2,
 	},
@@ -1083,7 +1256,6 @@ const styles = StyleSheet.create({
 
 	actionLabel: {
 		fontSize: 12,
-		color: '#6B7280',
 	},
 
 	section: {
@@ -1100,17 +1272,14 @@ const styles = StyleSheet.create({
 	sectionTitle: {
 		fontSize: 17,
 		fontWeight: '700',
-		color: '#1F1F1F',
 	},
 
 	diaryCard: {
-		backgroundColor: '#FFFFFF',
 		borderRadius: 18,
 		paddingHorizontal: 16,
 		paddingVertical: 14,
-		shadowColor: '#000',
-		shadowOpacity: 0.05,
-		shadowRadius: 6,
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 2,
 	},
@@ -1124,7 +1293,6 @@ const styles = StyleSheet.create({
 		width: 42,
 		height: 42,
 		borderRadius: 21,
-		backgroundColor: '#F3F4F6',
 		alignItems: 'center',
 		justifyContent: 'center',
 		marginRight: 12,
@@ -1141,12 +1309,10 @@ const styles = StyleSheet.create({
 	diaryText: {
 		fontSize: 18,
 		fontWeight: '700',
-		color: '#111827',
 	},
 
 	diarySubtext: {
 		fontSize: 12,
-		color: '#9AA0A6',
 		marginTop: 2,
 	},
 
@@ -1159,7 +1325,6 @@ const styles = StyleSheet.create({
 	diaryScore: {
 		fontSize: 14,
 		fontWeight: '700',
-		color: '#20C07A',
 	},
 
 	favoritesRow: {
@@ -1170,13 +1335,11 @@ const styles = StyleSheet.create({
 
 	favoriteCard: {
 		width: '48%',
-		backgroundColor: '#FFFFFF',
 		borderRadius: 18,
 		paddingHorizontal: 14,
 		paddingVertical: 12,
-		shadowColor: '#000',
-		shadowOpacity: 0.05,
-		shadowRadius: 6,
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 2,
 	},
@@ -1190,20 +1353,17 @@ const styles = StyleSheet.create({
 	favoriteTitle: {
 		marginLeft: 6,
 		fontSize: 14,
-		color: '#9AA0A6',
 		fontWeight: '600',
 	},
 
 	favoriteValue: {
 		fontSize: 21,
 		fontWeight: '700',
-		color: '#374151',
 		marginBottom: 10,
 	},
 
 	favoriteTrack: {
 		height: 6,
-		backgroundColor: '#E5E7EB',
 		borderRadius: 4,
 		overflow: 'hidden',
 	},
@@ -1221,12 +1381,10 @@ const styles = StyleSheet.create({
 	},
 
 	modalCard: {
-		backgroundColor: '#FFFFFF',
 		borderRadius: 20,
 		padding: 18,
-		shadowColor: '#000',
 		shadowOpacity: 0.08,
-		shadowRadius: 8,
+		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 4,
 	},
@@ -1234,14 +1392,12 @@ const styles = StyleSheet.create({
 	modalTitle: {
 		fontSize: 18,
 		fontWeight: '700',
-		color: '#1F2937',
 		marginBottom: 6,
 		textAlign: 'center',
 	},
 
 	modalSubtitle: {
 		fontSize: 13,
-		color: '#6B7280',
 		textAlign: 'center',
 		marginBottom: 14,
 	},
@@ -1249,9 +1405,7 @@ const styles = StyleSheet.create({
 	modalInputWrap: {
 		height: 54,
 		borderWidth: 1,
-		borderColor: '#E5E7EB',
 		borderRadius: 14,
-		backgroundColor: '#FAFAFA',
 		marginBottom: 16,
 		paddingHorizontal: 14,
 		flexDirection: 'row',
@@ -1261,13 +1415,11 @@ const styles = StyleSheet.create({
 	modalInput: {
 		flex: 1,
 		fontSize: 16,
-		color: '#111827',
 	},
 
 	modalInputUnit: {
 		fontSize: 14,
 		fontWeight: '600',
-		color: '#6B7280',
 		marginLeft: 10,
 	},
 
@@ -1284,18 +1436,13 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 	},
 
-	modalCancelButton: {
-		backgroundColor: '#F3F4F6',
-	},
+	modalCancelButton: {},
 
-	modalSaveButton: {
-		backgroundColor: '#20C07A',
-	},
+	modalSaveButton: {},
 
 	modalCancelText: {
 		fontSize: 15,
 		fontWeight: '600',
-		color: '#6B7280',
 	},
 
 	modalSaveText: {
