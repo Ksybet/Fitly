@@ -97,7 +97,9 @@ export default function PersonalDataScreen() {
 				weightKg:
 					data?.weightKg !== undefined && data?.weightKg !== null
 						? String(data.weightKg)
-						: '',
+						: user?.weightKg !== undefined && user?.weightKg !== null
+							? String(user.weightKg)
+							: '',
 				gender: data?.gender || user?.gender || '',
 			};
 
@@ -113,9 +115,7 @@ export default function PersonalDataScreen() {
 				weightKg:
 					user?.weightKg !== undefined && user?.weightKg !== null
 						? String(user.weightKg)
-						: user?.weight !== undefined && user?.weight !== null
-							? String(user.weight)
-							: '',
+						: '',
 				gender: user?.gender || '',
 			});
 		} finally {
@@ -221,12 +221,6 @@ export default function PersonalDataScreen() {
 						: nextProfile.weightKg
 							? Number(nextProfile.weightKg)
 							: undefined,
-				weight:
-					updated?.weightKg !== undefined && updated?.weightKg !== null
-						? updated.weightKg
-						: nextProfile.weightKg
-							? Number(nextProfile.weightKg)
-							: undefined,
 				gender: updated?.gender ?? nextProfile.gender,
 			});
 
@@ -301,7 +295,6 @@ export default function PersonalDataScreen() {
 						label='Email'
 						value={emailText}
 						editable={false}
-						noBorder={false}
 					/>
 
 					<DataRow

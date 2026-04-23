@@ -1,7 +1,7 @@
 import React, { createContext, useEffect, useState, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import httpClient from '../api/httpClient';
 import { router } from 'expo-router';
+import httpClient from '../api/httpClient';
 
 type User = {
 	userId?: string;
@@ -11,8 +11,7 @@ type User = {
 	firstName?: string;
 	lastName?: string;
 	birthDate?: string;
-	height?: number;
-	weight?: number;
+	weightKg?: number;
 	gender?: string;
 	role?: string;
 	appVersion?: string;
@@ -55,9 +54,11 @@ export const AuthProvider = ({ children }: Props) => {
 	const clearSession = async () => {
 		await AsyncStorage.removeItem('userToken');
 		await AsyncStorage.removeItem('profile');
+
 		setToken(null);
 		setUser(null);
 		setError('');
+
 		delete httpClient.defaults.headers.common.Authorization;
 	};
 
@@ -185,16 +186,14 @@ export const AuthProvider = ({ children }: Props) => {
 		}
 	};
 
-		const logout = async (): Promise<void> => {
-			try {
-				await clearSession();
-
-				router.replace('/login');
-
-			} catch (e) {
-				console.log('Ошибка при выходе', e);
-			}
-		};
+	const logout = async (): Promise<void> => {
+		try {
+			await clearSession();
+			router.replace('/login');
+		} catch (e) {
+			console.log('Ошибка при выходе', e);
+		}
+	};
 
 	return (
 		<AuthContext.Provider
