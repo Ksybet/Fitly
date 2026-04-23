@@ -26,6 +26,7 @@ import BottomNav from '../src/components/BottomNav';
 
 const GOALS_STORAGE_KEY = 'fitly_goals';
 const DAILY_DATA_STORAGE_KEY = 'fitly_daily_data';
+const FAVORITES_STORAGE_KEY = 'fitly_favorites';
 
 type ActionButtonProps = {
 	icon: React.ReactNode;
@@ -38,6 +39,7 @@ type GoalsState = {
 	calorieGoal: number | null;
 	weightGoal: number | null;
 	sleepGoalHours: number | null;
+	waterGoal: number | null;
 };
 
 type DailyDataState = {
@@ -48,13 +50,25 @@ type DailyDataState = {
 	sleepStart: string;
 	sleepEnd: string;
 	calories: number;
+	moodScore: number | null;
+	moodLabel: string;
+	moodEmoji: string;
+	waterCurrent: number | null;
 };
 
-type QuickEditField = 'steps' | 'calories' | null;
+type QuickEditField = 'steps' | 'calories' | 'water' | null;
 
 type StepsProgressCircleProps = {
 	value: number;
 	goal: number | null;
+};
+
+type FavoriteKey = 'water' | 'weight';
+type FavoritesState = Record<FavoriteKey, boolean>;
+
+const DEFAULT_FAVORITES: FavoritesState = {
+	water: true,
+	weight: true,
 };
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -130,14 +144,18 @@ export default function HomeScreen() {
 	const userName =
 		user?.firstName || user?.name || user?.email?.split('@')[0] || 'Алексей';
 
-	const currentWeight = Number(user?.weightKg ?? 68);
+	const currentWeight = Number(user?.weightKg ?? 0);
+	const hasWeight = currentWeight > 0;
 
 	const [goals, setGoals] = useState<GoalsState>({
 		stepsGoal: null,
 		calorieGoal: null,
 		weightGoal: null,
 		sleepGoalHours: null,
+		waterGoal: null,
 	});
+
+	const [favorites, setFavorites] = useState<FavoritesState>(DEFAULT_FAVORITES);
 
 	const [dailyData, setDailyData] = useState<DailyDataState>({
 		steps: 0,
@@ -147,6 +165,10 @@ export default function HomeScreen() {
 		sleepStart: '',
 		sleepEnd: '',
 		calories: 0,
+		moodScore: null,
+		moodLabel: '',
+		moodEmoji: '',
+		waterCurrent: null,
 	});
 
 	const [quickEditField, setQuickEditField] = useState<QuickEditField>(null);
@@ -155,9 +177,10 @@ export default function HomeScreen() {
 
 	const loadHomeData = async () => {
 		try {
-			const [rawGoals, rawDailyData] = await Promise.all([
+			const [rawGoals, rawDailyData, rawFavorites] = await Promise.all([
 				AsyncStorage.getItem(GOALS_STORAGE_KEY),
 				AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY),
+				AsyncStorage.getItem(FAVORITES_STORAGE_KEY),
 			]);
 
 			if (rawGoals) {
@@ -188,6 +211,12 @@ export default function HomeScreen() {
 						Number(parsedGoals.sleepGoalHours) > 0
 							? Number(parsedGoals.sleepGoalHours)
 							: null,
+					waterGoal:
+						parsedGoals?.waterGoal !== undefined &&
+						parsedGoals?.waterGoal !== null &&
+						Number(parsedGoals.waterGoal) > 0
+							? Number(parsedGoals.waterGoal)
+							: null,
 				});
 			} else {
 				setGoals({
@@ -195,6 +224,7 @@ export default function HomeScreen() {
 					calorieGoal: null,
 					weightGoal: null,
 					sleepGoalHours: null,
+					waterGoal: null,
 				});
 			}
 
@@ -209,7 +239,30 @@ export default function HomeScreen() {
 					sleepStart: parsedDailyData?.sleepStart ?? '',
 					sleepEnd: parsedDailyData?.sleepEnd ?? '',
 					calories: Number(parsedDailyData?.calories ?? 0),
+					moodScore:
+						parsedDailyData?.moodScore !== undefined &&
+						parsedDailyData?.moodScore !== null
+							? Number(parsedDailyData.moodScore)
+							: null,
+					moodLabel: parsedDailyData?.moodLabel ?? '',
+					moodEmoji: parsedDailyData?.moodEmoji ?? '',
+					waterCurrent:
+						parsedDailyData?.waterCurrent !== undefined &&
+						parsedDailyData?.waterCurrent !== null &&
+						Number(parsedDailyData.waterCurrent) > 0
+							? Number(parsedDailyData.waterCurrent)
+							: null,
 				});
+			}
+
+			if (rawFavorites) {
+				const parsedFavorites = JSON.parse(rawFavorites);
+				setFavorites({
+					...DEFAULT_FAVORITES,
+					...parsedFavorites,
+				});
+			} else {
+				setFavorites(DEFAULT_FAVORITES);
 			}
 		} catch (e) {
 			console.log('Ошибка загрузки данных Home', e);
@@ -260,26 +313,40 @@ export default function HomeScreen() {
 		hasSleep,
 	]);
 
-	const waterProgress = 60;
+	const waterProgress = useMemo(() => {
+		if (!goals.waterGoal || !dailyData.waterCurrent) return 0;
+		return Math.min((dailyData.waterCurrent / goals.waterGoal) * 100, 100);
+	}, [dailyData.waterCurrent, goals.waterGoal]);
 
 	const weightProgress = useMemo(() => {
-		if (!goals.weightGoal) return 0;
+		if (!goals.weightGoal || !hasWeight) return 0;
 		return Math.min((currentWeight / goals.weightGoal) * 100, 100);
-	}, [currentWeight, goals.weightGoal]);
+	}, [currentWeight, goals.weightGoal, hasWeight]);
 
 	const openQuickEdit = (field: QuickEditField) => {
 		if (!field) return;
 
 		setQuickEditField(field);
-		setQuickEditValue(
-			field === 'steps'
-				? dailyData.steps > 0
-					? String(dailyData.steps)
-					: ''
-				: dailyData.calories > 0
-					? String(dailyData.calories)
+
+		if (field === 'steps') {
+			setQuickEditValue(dailyData.steps > 0 ? String(dailyData.steps) : '');
+			return;
+		}
+
+		if (field === 'calories') {
+			setQuickEditValue(
+				dailyData.calories > 0 ? String(dailyData.calories) : '',
+			);
+			return;
+		}
+
+		if (field === 'water') {
+			setQuickEditValue(
+				dailyData.waterCurrent !== null && dailyData.waterCurrent > 0
+					? String(dailyData.waterCurrent).replace('.', ',')
 					: '',
-		);
+			);
+		}
 	};
 
 	const closeQuickEdit = () => {
@@ -290,7 +357,12 @@ export default function HomeScreen() {
 	const saveQuickEdit = async () => {
 		if (!quickEditField) return;
 
-		const numericValue = Number(quickEditValue);
+		const normalizedValue =
+			quickEditField === 'water'
+				? quickEditValue.replace(',', '.')
+				: quickEditValue;
+
+		const numericValue = Number(normalizedValue);
 
 		if (!quickEditValue || Number.isNaN(numericValue) || numericValue < 0) {
 			Alert.alert('Ошибка', 'Введите корректное число');
@@ -311,6 +383,18 @@ export default function HomeScreen() {
 				sleepStart: parsedDailyData?.sleepStart ?? '',
 				sleepEnd: parsedDailyData?.sleepEnd ?? '',
 				calories: Number(parsedDailyData?.calories ?? 0),
+				moodScore:
+					parsedDailyData?.moodScore !== undefined &&
+					parsedDailyData?.moodScore !== null
+						? Number(parsedDailyData.moodScore)
+						: null,
+				moodLabel: parsedDailyData?.moodLabel ?? '',
+				moodEmoji: parsedDailyData?.moodEmoji ?? '',
+				waterCurrent:
+					parsedDailyData?.waterCurrent !== undefined &&
+					parsedDailyData?.waterCurrent !== null
+						? Number(parsedDailyData.waterCurrent)
+						: null,
 				updatedAt: new Date().toISOString(),
 			};
 
@@ -322,6 +406,10 @@ export default function HomeScreen() {
 				updatedPayload.calories = numericValue;
 			}
 
+			if (quickEditField === 'water') {
+				updatedPayload.waterCurrent = numericValue;
+			}
+
 			await AsyncStorage.setItem(
 				DAILY_DATA_STORAGE_KEY,
 				JSON.stringify(updatedPayload),
@@ -331,6 +419,8 @@ export default function HomeScreen() {
 				...prev,
 				steps: quickEditField === 'steps' ? numericValue : prev.steps,
 				calories: quickEditField === 'calories' ? numericValue : prev.calories,
+				waterCurrent:
+					quickEditField === 'water' ? numericValue : prev.waterCurrent,
 			}));
 
 			closeQuickEdit();
@@ -347,21 +437,32 @@ export default function HomeScreen() {
 			? 'Введите шаги'
 			: quickEditField === 'calories'
 				? 'Введите калории'
-				: '';
+				: quickEditField === 'water'
+					? 'Введите воду'
+					: '';
 
 	const quickEditPlaceholder =
 		quickEditField === 'steps'
 			? 'Например, 7560'
 			: quickEditField === 'calories'
 				? 'Например, 1850'
-				: 'Введите значение';
+				: quickEditField === 'water'
+					? 'Например, 1,5'
+					: 'Введите значение';
 
 	const quickEditUnit =
 		quickEditField === 'steps'
 			? 'шагов'
 			: quickEditField === 'calories'
 				? 'ккал'
-				: '';
+				: quickEditField === 'water'
+					? 'л'
+					: '';
+
+	const currentMoodEmoji = dailyData.moodEmoji || '😐';
+	const currentMoodLabel = dailyData.moodLabel || 'Нейтральное';
+	const currentMoodScore =
+		dailyData.moodScore !== null ? `${dailyData.moodScore} / 10` : '';
 
 	return (
 		<View style={styles.container}>
@@ -531,78 +632,116 @@ export default function HomeScreen() {
 				<View style={styles.section}>
 					<View style={styles.sectionHeader}>
 						<Text style={styles.sectionTitle}>Дневник состояния</Text>
-
-						<TouchableOpacity activeOpacity={0.8}>
-							<Text style={styles.dots}>···</Text>
-						</TouchableOpacity>
 					</View>
 
-					<View style={styles.diaryCard}>
+					<TouchableOpacity
+						style={styles.diaryCard}
+						activeOpacity={0.9}
+						onPress={() => router.push('/mood' as any)}
+					>
 						<View style={styles.diaryLeft}>
-							<View style={styles.moodIconCircle}>
-								<Ionicons name='happy-outline' size={22} color='#20C07A' />
+							<View style={styles.moodEmojiCircle}>
+								<Text style={styles.moodEmojiText}>{currentMoodEmoji}</Text>
 							</View>
 
-							<Text style={styles.diaryText}>Хорошее</Text>
+							<View style={styles.diaryTextWrap}>
+								<Text style={styles.diaryText}>{currentMoodLabel}</Text>
+								<Text style={styles.diarySubtext}>
+									{dailyData.moodScore !== null
+										? 'Нажми, чтобы изменить настроение'
+										: 'Нажми, чтобы выбрать настроение'}
+								</Text>
+							</View>
 
-							<Ionicons name='thumbs-up' size={18} color='#20C07A' />
+							<View style={styles.diaryRight}>
+								{currentMoodScore ? (
+									<Text style={styles.diaryScore}>{currentMoodScore}</Text>
+								) : null}
+								<Ionicons name='chevron-forward' size={18} color='#9CA3AF' />
+							</View>
 						</View>
-					</View>
+					</TouchableOpacity>
 				</View>
 
 				<View style={styles.section}>
 					<View style={styles.sectionHeader}>
 						<Text style={styles.sectionTitle}>Избранное</Text>
 
-						<TouchableOpacity activeOpacity={0.8}>
+						<TouchableOpacity
+							activeOpacity={0.8}
+							onPress={() => router.push('/favorites' as any)}
+						>
 							<MaterialIcons name='menu' size={22} color='#4B5563' />
 						</TouchableOpacity>
 					</View>
 
 					<View style={styles.favoritesRow}>
-						<View style={styles.favoriteCard}>
-							<View style={styles.favoriteTopRow}>
-								<Ionicons name='water-outline' size={18} color='#6F9BFF' />
-								<Text style={styles.favoriteTitle}>Вода</Text>
-							</View>
-
-							<Text style={styles.favoriteValue}>1,2 л / 2 л</Text>
-
-							<View style={styles.favoriteTrack}>
-								<View
-									style={[
-										styles.favoriteFill,
-										{ width: `${waterProgress}%`, backgroundColor: '#6F9BFF' },
-									]}
-								/>
-							</View>
-						</View>
-
-						<View style={styles.favoriteCard}>
-							<View style={styles.favoriteTopRow}>
-								<Ionicons name='barbell-outline' size={18} color='#F2B544' />
-								<Text style={styles.favoriteTitle}>Вес</Text>
-							</View>
-
-							<Text style={styles.favoriteValue}>
-								{currentWeight}
-								{goals.weightGoal ? ` / ${goals.weightGoal}` : ''} кг
-							</Text>
-
-							{goals.weightGoal ? (
-								<View style={styles.favoriteTrack}>
-									<View
-										style={[
-											styles.favoriteFill,
-											{
-												width: `${weightProgress}%`,
-												backgroundColor: '#F2B544',
-											},
-										]}
-									/>
+						{favorites.water ? (
+							<TouchableOpacity
+								style={styles.favoriteCard}
+								activeOpacity={0.9}
+								onPress={() => openQuickEdit('water')}
+							>
+								<View style={styles.favoriteTopRow}>
+									<Ionicons name='water-outline' size={18} color='#6F9BFF' />
+									<Text style={styles.favoriteTitle}>Вода</Text>
 								</View>
-							) : null}
-						</View>
+
+								<Text style={styles.favoriteValue}>
+									{dailyData.waterCurrent !== null
+										? `${String(dailyData.waterCurrent).replace('.', ',')} л`
+										: '—'}
+									{goals.waterGoal
+										? ` / ${String(goals.waterGoal).replace('.', ',')} л`
+										: ''}
+								</Text>
+
+								{goals.waterGoal ? (
+									<View style={styles.favoriteTrack}>
+										<View
+											style={[
+												styles.favoriteFill,
+												{
+													width: `${waterProgress}%`,
+													backgroundColor: '#6F9BFF',
+												},
+											]}
+										/>
+									</View>
+								) : null}
+							</TouchableOpacity>
+						) : null}
+
+						{favorites.weight ? (
+							<View style={styles.favoriteCard}>
+								<View style={styles.favoriteTopRow}>
+									<Ionicons name='barbell-outline' size={18} color='#F2B544' />
+									<Text style={styles.favoriteTitle}>Вес</Text>
+								</View>
+
+								<Text style={styles.favoriteValue}>
+									{hasWeight ? currentWeight : '—'}
+									{hasWeight && goals.weightGoal
+										? ` / ${goals.weightGoal}`
+										: ''}
+									{hasWeight ? ' кг' : ''}
+								</Text>
+
+								{goals.weightGoal && hasWeight ? (
+									<View style={styles.favoriteTrack}>
+										<View
+											style={[
+												styles.favoriteFill,
+												{
+													width: `${weightProgress}%`,
+													backgroundColor: '#F2B544',
+												},
+											]}
+										/>
+									</View>
+								) : null}
+							</View>
+						) : null}
 					</View>
 				</View>
 			</ScrollView>
@@ -622,10 +761,22 @@ export default function HomeScreen() {
 							<TextInput
 								style={styles.modalInput}
 								value={quickEditValue}
-								onChangeText={text =>
-									setQuickEditValue(text.replace(/[^0-9]/g, ''))
+								onChangeText={text => {
+									if (quickEditField === 'water') {
+										const normalized = text
+											.replace('.', ',')
+											.replace(/[^0-9,]/g, '')
+											.replace(/(,.*),/g, '$1');
+
+										setQuickEditValue(normalized);
+										return;
+									}
+
+									setQuickEditValue(text.replace(/[^0-9]/g, ''));
+								}}
+								keyboardType={
+									quickEditField === 'water' ? 'decimal-pad' : 'numeric'
 								}
-								keyboardType='numeric'
 								placeholder={quickEditPlaceholder}
 								placeholderTextColor='#A0A7B5'
 								autoFocus
@@ -952,12 +1103,6 @@ const styles = StyleSheet.create({
 		color: '#1F1F1F',
 	},
 
-	dots: {
-		fontSize: 20,
-		color: '#9CA3AF',
-		lineHeight: 20,
-	},
-
 	diaryCard: {
 		backgroundColor: '#FFFFFF',
 		borderRadius: 18,
@@ -975,31 +1120,56 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 	},
 
-	moodIconCircle: {
-		width: 34,
-		height: 34,
-		borderRadius: 17,
-		borderWidth: 2,
-		borderColor: '#20C07A',
+	moodEmojiCircle: {
+		width: 42,
+		height: 42,
+		borderRadius: 21,
+		backgroundColor: '#F3F4F6',
 		alignItems: 'center',
 		justifyContent: 'center',
-		marginRight: 10,
+		marginRight: 12,
+	},
+
+	moodEmojiText: {
+		fontSize: 22,
+	},
+
+	diaryTextWrap: {
+		flex: 1,
 	},
 
 	diaryText: {
 		fontSize: 18,
 		fontWeight: '700',
 		color: '#111827',
-		marginRight: 8,
+	},
+
+	diarySubtext: {
+		fontSize: 12,
+		color: '#9AA0A6',
+		marginTop: 2,
+	},
+
+	diaryRight: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+	},
+
+	diaryScore: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#20C07A',
 	},
 
 	favoritesRow: {
 		flexDirection: 'row',
+		flexWrap: 'wrap',
 		gap: 12,
 	},
 
 	favoriteCard: {
-		flex: 1,
+		width: '48%',
 		backgroundColor: '#FFFFFF',
 		borderRadius: 18,
 		paddingHorizontal: 14,

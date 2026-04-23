@@ -10,7 +10,7 @@ import {
 	Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 const GOALS_STORAGE_KEY = 'fitly_goals';
@@ -20,6 +20,7 @@ type GoalsState = {
 	calorieGoal: string;
 	weightGoal: string;
 	sleepGoalHours: string;
+	waterGoal: string;
 };
 
 export default function GoalsScreen() {
@@ -28,6 +29,7 @@ export default function GoalsScreen() {
 		calorieGoal: '',
 		weightGoal: '',
 		sleepGoalHours: '',
+		waterGoal: '',
 	});
 
 	const [isSaving, setIsSaving] = useState(false);
@@ -39,7 +41,6 @@ export default function GoalsScreen() {
 	const loadGoals = async () => {
 		try {
 			const raw = await AsyncStorage.getItem(GOALS_STORAGE_KEY);
-
 			if (!raw) return;
 
 			const parsed = JSON.parse(raw);
@@ -62,6 +63,10 @@ export default function GoalsScreen() {
 					parsed?.sleepGoalHours !== null
 						? String(parsed.sleepGoalHours)
 						: '',
+				waterGoal:
+					parsed?.waterGoal !== undefined && parsed?.waterGoal !== null
+						? String(parsed.waterGoal)
+						: '',
 			});
 		} catch (e) {
 			console.log('Ошибка загрузки целей', e);
@@ -82,7 +87,8 @@ export default function GoalsScreen() {
 			!!goals.stepsGoal ||
 			!!goals.calorieGoal ||
 			!!goals.weightGoal ||
-			!!goals.sleepGoalHours;
+			!!goals.sleepGoalHours ||
+			!!goals.waterGoal;
 
 		if (!hasAnyGoal) {
 			Alert.alert('Ошибка', 'Введите хотя бы одну цель');
@@ -96,6 +102,11 @@ export default function GoalsScreen() {
 
 		if (goals.calorieGoal && Number(goals.calorieGoal) <= 0) {
 			Alert.alert('Ошибка', 'Цель по калориям должна быть больше нуля');
+			return false;
+		}
+
+		if (goals.waterGoal && Number(goals.waterGoal) <= 0) {
+			Alert.alert('Ошибка', 'Цель по воде должна быть больше нуля');
 			return false;
 		}
 
@@ -128,11 +139,11 @@ export default function GoalsScreen() {
 				sleepGoalHours: goals.sleepGoalHours
 					? Number(goals.sleepGoalHours)
 					: null,
+				waterGoal: goals.waterGoal ? Number(goals.waterGoal) : null,
 				updatedAt: new Date().toISOString(),
 			};
 
 			await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(payload));
-
 			router.back();
 		} catch (e) {
 			console.log('Ошибка сохранения целей', e);
@@ -170,12 +181,19 @@ export default function GoalsScreen() {
 					<View style={styles.heroTextWrap}>
 						<Text style={styles.heroTitle}>Настрой свои цели</Text>
 						<Text style={styles.heroSubtitle}>
-							Цели появятся на главной после сохранения
+							Показатели будут отображаться на главной
 						</Text>
 					</View>
 				</View>
 
-				<View style={styles.card}>
+				<View style={styles.sectionCard}>
+					<View style={styles.sectionTop}>
+						<View style={styles.sectionIcon}>
+							<Ionicons name='walk-outline' size={18} color='#20C07A' />
+						</View>
+						<Text style={styles.sectionName}>Активность</Text>
+					</View>
+
 					<Text style={styles.label}>Цель по шагам</Text>
 					<TextInput
 						style={styles.input}
@@ -185,6 +203,19 @@ export default function GoalsScreen() {
 						placeholder='Например, 10000'
 						placeholderTextColor='#A0A7B5'
 					/>
+				</View>
+
+				<View style={styles.sectionCard}>
+					<View style={styles.sectionTop}>
+						<View style={styles.sectionIcon}>
+							<MaterialIcons
+								name='local-fire-department'
+								size={18}
+								color='#F2B544'
+							/>
+						</View>
+						<Text style={styles.sectionName}>Питание</Text>
+					</View>
 
 					<Text style={styles.label}>Цель по калориям</Text>
 					<TextInput
@@ -195,6 +226,34 @@ export default function GoalsScreen() {
 						placeholder='Например, 2300'
 						placeholderTextColor='#A0A7B5'
 					/>
+				</View>
+
+				<View style={styles.sectionCard}>
+					<View style={styles.sectionTop}>
+						<View style={styles.sectionIcon}>
+							<Ionicons name='water-outline' size={18} color='#6F9BFF' />
+						</View>
+						<Text style={styles.sectionName}>Вода</Text>
+					</View>
+
+					<Text style={styles.label}>Цель по воде (литры)</Text>
+					<TextInput
+						style={styles.input}
+						value={goals.waterGoal}
+						onChangeText={value => handleChange('waterGoal', value)}
+						keyboardType='numeric'
+						placeholder='Например, 2'
+						placeholderTextColor='#A0A7B5'
+					/>
+				</View>
+
+				<View style={styles.sectionCard}>
+					<View style={styles.sectionTop}>
+						<View style={styles.sectionIcon}>
+							<Ionicons name='barbell-outline' size={18} color='#F2B544' />
+						</View>
+						<Text style={styles.sectionName}>Тело</Text>
+					</View>
 
 					<Text style={styles.label}>Целевой вес</Text>
 					<TextInput
@@ -205,6 +264,15 @@ export default function GoalsScreen() {
 						placeholder='Например, 75'
 						placeholderTextColor='#A0A7B5'
 					/>
+				</View>
+
+				<View style={styles.sectionCard}>
+					<View style={styles.sectionTop}>
+						<View style={styles.sectionIcon}>
+							<Ionicons name='moon' size={18} color='#6F9BFF' />
+						</View>
+						<Text style={styles.sectionName}>Сон</Text>
+					</View>
 
 					<Text style={styles.label}>Цель сна (часы)</Text>
 					<View style={styles.sleepGoalGrid}>
@@ -262,7 +330,6 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: '#F4F4F4',
 	},
-
 	header: {
 		height: 96,
 		paddingTop: 35,
@@ -274,31 +341,26 @@ const styles = StyleSheet.create({
 		borderBottomColor: '#ECECEC',
 		backgroundColor: '#F4F4F4',
 	},
-
 	backButton: {
 		width: 40,
 		height: 40,
 		justifyContent: 'center',
 		alignItems: 'center',
 	},
-
 	headerTitle: {
 		fontSize: 18,
 		fontWeight: '700',
 		color: '#1F2937',
 	},
-
 	headerSpacer: {
 		width: 40,
 		height: 40,
 	},
-
 	content: {
 		paddingHorizontal: 16,
 		paddingTop: 20,
 		paddingBottom: 30,
 	},
-
 	heroCard: {
 		flexDirection: 'row',
 		backgroundColor: '#fff',
@@ -306,7 +368,6 @@ const styles = StyleSheet.create({
 		padding: 14,
 		marginBottom: 14,
 	},
-
 	heroIcon: {
 		width: 42,
 		height: 42,
@@ -316,38 +377,51 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		marginRight: 10,
 	},
-
 	heroTextWrap: {
 		flex: 1,
 	},
-
 	heroTitle: {
 		fontSize: 16,
 		fontWeight: '700',
 		color: '#1F2937',
 	},
-
 	heroSubtitle: {
 		fontSize: 13,
 		color: '#6B7280',
 		lineHeight: 18,
 	},
-
-	card: {
+	sectionCard: {
 		backgroundColor: '#fff',
 		borderRadius: 20,
 		padding: 16,
-		marginBottom: 20,
+		marginBottom: 14,
 	},
-
+	sectionTop: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginBottom: 8,
+	},
+	sectionIcon: {
+		width: 34,
+		height: 34,
+		borderRadius: 17,
+		backgroundColor: '#F8FAFC',
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginRight: 10,
+	},
+	sectionName: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#1F2937',
+	},
 	label: {
 		fontSize: 14,
 		fontWeight: '600',
 		color: '#374151',
 		marginBottom: 6,
-		marginTop: 10,
+		marginTop: 8,
 	},
-
 	input: {
 		height: 48,
 		borderWidth: 1,
@@ -358,14 +432,12 @@ const styles = StyleSheet.create({
 		color: '#111827',
 		backgroundColor: '#FAFAFA',
 	},
-
 	sleepGoalGrid: {
 		flexDirection: 'row',
 		flexWrap: 'wrap',
 		gap: 8,
 		marginTop: 4,
 	},
-
 	sleepGoalOption: {
 		width: 46,
 		height: 40,
@@ -376,34 +448,29 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
 	sleepGoalOptionActive: {
 		backgroundColor: '#EEF9F3',
 		borderColor: '#20C07A',
 	},
-
 	sleepGoalOptionText: {
 		fontSize: 14,
 		fontWeight: '600',
 		color: '#6B7280',
 	},
-
 	sleepGoalOptionTextActive: {
 		color: '#20C07A',
 	},
-
 	saveButton: {
 		height: 54,
 		borderRadius: 16,
 		backgroundColor: '#20C07A',
 		alignItems: 'center',
 		justifyContent: 'center',
+		marginTop: 6,
 	},
-
 	saveButtonDisabled: {
 		opacity: 0.7,
 	},
-
 	saveButtonText: {
 		color: '#fff',
 		fontSize: 16,
