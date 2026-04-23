@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { AuthContext } from '../context/AuthContext';
+import { ThemeContext } from '../context/ThemeContext';
 
 if (
 	Platform.OS === 'android' &&
@@ -40,6 +41,7 @@ export default function LoginScreen() {
 
 	const { token, login, register, isLoading, error, setError } =
 		useContext(AuthContext);
+	const { colors, isDark } = useContext(ThemeContext);
 
 	useEffect(() => {
 		Animated.spring(tabAnim, {
@@ -73,7 +75,6 @@ export default function LoginScreen() {
 		};
 	}, []);
 
-	// ✅ ПЕРЕХОД ПОСЛЕ ЛОГИНА
 	useEffect(() => {
 		if (token) {
 			router.replace('/home');
@@ -120,7 +121,9 @@ export default function LoginScreen() {
 	};
 
 	return (
-		<SafeAreaView style={styles.safeArea}>
+		<SafeAreaView
+			style={[styles.safeArea, { backgroundColor: colors.background }]}
+		>
 			<KeyboardAvoidingView
 				behavior={Platform.OS === 'ios' ? 'padding' : undefined}
 				style={styles.container}
@@ -132,18 +135,41 @@ export default function LoginScreen() {
 				>
 					<View style={styles.content}>
 						<View style={styles.logoContainer}>
-							<Text style={styles.logoText}>Fitly</Text>
-							<Text style={styles.subtitleText}>
+							<Text
+								style={[
+									styles.logoText,
+									{
+										color: colors.primary,
+										textShadowColor: isDark
+											? 'rgba(52, 211, 153, 0.18)'
+											: 'rgba(0, 208, 132, 0.2)',
+									},
+								]}
+							>
+								Fitly
+							</Text>
+
+							<Text style={[styles.subtitleText, { color: colors.textMuted }]}>
 								Трекер здоровья и привычек{'\n'}для осознанного контроля
 							</Text>
 						</View>
 
-						<View style={styles.tabsContainer}>
+						<View
+							style={[
+								styles.tabsContainer,
+								{
+									backgroundColor: colors.cardSecondary,
+									borderColor: colors.border,
+								},
+							]}
+						>
 							<Animated.View
 								style={[
 									styles.tabSlider,
 									{
 										width: '56%',
+										backgroundColor: colors.card,
+										shadowColor: colors.shadow,
 										left: tabAnim.interpolate({
 											inputRange: [0, 1],
 											outputRange: [4, TAB_CONTAINER_WIDTH * 0.44 - 4],
@@ -166,7 +192,11 @@ export default function LoginScreen() {
 								<Text
 									style={[
 										styles.tabText,
-										activeTab === 'login' && styles.activeTabText,
+										{ color: colors.textMuted },
+										activeTab === 'login' && [
+											styles.activeTabText,
+											{ color: colors.text },
+										],
 									]}
 								>
 									Вход
@@ -187,7 +217,11 @@ export default function LoginScreen() {
 								<Text
 									style={[
 										styles.tabText,
-										activeTab === 'register' && styles.activeTabText,
+										{ color: colors.textMuted },
+										activeTab === 'register' && [
+											styles.activeTabText,
+											{ color: colors.text },
+										],
 									]}
 								>
 									Регистрация
@@ -199,9 +233,16 @@ export default function LoginScreen() {
 
 						<View style={styles.inputContainer}>
 							<TextInput
-								style={styles.input}
+								style={[
+									styles.input,
+									{
+										backgroundColor: colors.card,
+										borderColor: colors.border,
+										color: colors.text,
+									},
+								]}
 								placeholder='Email'
-								placeholderTextColor='#A0A0A0'
+								placeholderTextColor={colors.textMuted}
 								value={email}
 								onChangeText={text => {
 									setEmail(text);
@@ -212,9 +253,17 @@ export default function LoginScreen() {
 							/>
 
 							<TextInput
-								style={[styles.input, { marginTop: 16 }]}
+								style={[
+									styles.input,
+									styles.inputSpacing,
+									{
+										backgroundColor: colors.card,
+										borderColor: colors.border,
+										color: colors.text,
+									},
+								]}
 								placeholder='Пароль'
-								placeholderTextColor='#A0A0A0'
+								placeholderTextColor={colors.textMuted}
 								value={password}
 								onChangeText={text => {
 									setPassword(text);
@@ -225,9 +274,17 @@ export default function LoginScreen() {
 
 							{activeTab === 'register' && (
 								<TextInput
-									style={[styles.input, { marginTop: 16 }]}
+									style={[
+										styles.input,
+										styles.inputSpacing,
+										{
+											backgroundColor: colors.card,
+											borderColor: colors.border,
+											color: colors.text,
+										},
+									]}
 									placeholder='Подтвердите пароль'
-									placeholderTextColor='#A0A0A0'
+									placeholderTextColor={colors.textMuted}
 									value={confirmPassword}
 									onChangeText={text => {
 										setConfirmPassword(text);
@@ -239,7 +296,7 @@ export default function LoginScreen() {
 						</View>
 
 						<TouchableOpacity
-							style={styles.submitButton}
+							style={[styles.submitButton, { backgroundColor: colors.primary }]}
 							onPress={handleSubmit}
 							disabled={isLoading}
 							activeOpacity={0.8}
@@ -253,7 +310,14 @@ export default function LoginScreen() {
 
 						{activeTab === 'login' && (
 							<TouchableOpacity style={styles.forgotPasswordContainer}>
-								<Text style={styles.forgotPasswordText}>Забыли пароль?</Text>
+								<Text
+									style={[
+										styles.forgotPasswordText,
+										{ color: colors.textMuted },
+									]}
+								>
+									Забыли пароль?
+								</Text>
 							</TouchableOpacity>
 						)}
 					</View>
@@ -261,9 +325,17 @@ export default function LoginScreen() {
 			</KeyboardAvoidingView>
 
 			{!isKeyboardVisible && (
-				<View style={styles.footerContainer}>
-					<View style={styles.separator} />
-					<Text style={styles.footerText}>
+				<View
+					style={[
+						styles.footerContainer,
+						{ backgroundColor: colors.background },
+					]}
+				>
+					<View
+						style={[styles.separator, { backgroundColor: colors.border }]}
+					/>
+
+					<Text style={[styles.footerText, { color: colors.textMuted }]}>
 						Продолжая, вы соглашаетесь с{'\n'}условиями и политикой
 						конфиденциальности.
 					</Text>
@@ -276,7 +348,6 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
 	safeArea: {
 		flex: 1,
-		backgroundColor: '#FFFFFF',
 	},
 	container: {
 		flex: 1,
@@ -296,26 +367,23 @@ const styles = StyleSheet.create({
 	logoText: {
 		fontSize: 48,
 		fontWeight: '700',
-		color: '#00D084',
 		marginBottom: 16,
-		textShadowColor: 'rgba(0, 208, 132, 0.2)',
 		textShadowOffset: { width: 0, height: 4 },
 		textShadowRadius: 10,
 	},
 	subtitleText: {
 		fontSize: 14,
-		color: '#8A8A8E',
 		textAlign: 'center',
 		lineHeight: 20,
 		fontWeight: '500',
 	},
 	tabsContainer: {
 		flexDirection: 'row',
-		backgroundColor: '#F2F2F7',
 		borderRadius: 25,
 		padding: 4,
 		marginBottom: 24,
 		position: 'relative',
+		borderWidth: 1,
 	},
 	tab: {
 		paddingVertical: 12,
@@ -326,37 +394,33 @@ const styles = StyleSheet.create({
 		position: 'absolute',
 		top: 4,
 		bottom: 4,
-		backgroundColor: '#FFFFFF',
 		borderRadius: 21,
-		shadowColor: '#000',
 		shadowOffset: {
 			width: 0,
 			height: 2,
 		},
-		shadowOpacity: 0.1,
-		shadowRadius: 3,
+		shadowOpacity: 0.12,
+		shadowRadius: 6,
 		elevation: 2,
 	},
 	tabText: {
 		fontSize: 15,
 		fontWeight: '600',
-		color: '#8A8A8E',
 	},
-	activeTabText: {
-		color: '#000000',
-	},
+	activeTabText: {},
+
 	inputContainer: {
 		marginBottom: 24,
 	},
 	input: {
-		backgroundColor: '#FFFFFF',
 		borderWidth: 1,
-		borderColor: '#E5E5EA',
 		borderRadius: 12,
 		paddingVertical: 16,
 		paddingHorizontal: 16,
 		fontSize: 16,
-		color: '#000000',
+	},
+	inputSpacing: {
+		marginTop: 16,
 	},
 	errorText: {
 		color: '#FF3B30',
@@ -365,7 +429,6 @@ const styles = StyleSheet.create({
 		textAlign: 'center',
 	},
 	submitButton: {
-		backgroundColor: '#00D084',
 		borderRadius: 12,
 		paddingVertical: 16,
 		alignItems: 'center',
@@ -380,7 +443,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 	},
 	forgotPasswordText: {
-		color: '#8A8A8E',
 		fontSize: 15,
 	},
 	footerContainer: {
@@ -388,7 +450,6 @@ const styles = StyleSheet.create({
 		bottom: 0,
 		left: 0,
 		right: 0,
-		backgroundColor: '#FFFFFF',
 		paddingHorizontal: 24,
 		paddingBottom: 20,
 		alignItems: 'center',
@@ -396,11 +457,9 @@ const styles = StyleSheet.create({
 	separator: {
 		width: '100%',
 		height: 1,
-		backgroundColor: '#E5E5EA',
 		marginBottom: 16,
 	},
 	footerText: {
-		color: '#A0A0A0',
 		fontSize: 12,
 		textAlign: 'center',
 		lineHeight: 18,

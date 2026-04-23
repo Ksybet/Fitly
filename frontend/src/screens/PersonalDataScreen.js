@@ -13,6 +13,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
 import { AuthContext } from '../context/AuthContext';
+import { ThemeContext } from '../context/ThemeContext';
 import { getMyProfile, updateMyProfile } from '../api/profile.api';
 
 import EditFieldModal from './EditFieldModal';
@@ -26,29 +27,40 @@ function DataRow({
 	onPress,
 	noBorder = false,
 	editable = true,
+	colors,
 }) {
 	return (
 		<TouchableOpacity
-			style={[styles.row, noBorder && styles.rowNoBorder]}
+			style={[
+				styles.row,
+				{ borderBottomColor: colors.border },
+				noBorder && styles.rowNoBorder,
+			]}
 			onPress={editable ? onPress : undefined}
 			activeOpacity={editable ? 0.8 : 1}
 			disabled={!editable}
 		>
 			<View style={styles.rowLeft}>
-				<View style={styles.iconWrapper}>{icon}</View>
+				<View style={[styles.iconWrapper, { backgroundColor: colors.iconBg }]}>
+					{icon}
+				</View>
 
 				<View style={styles.textBlock}>
-					<Text style={styles.rowLabel}>{label}</Text>
+					<Text style={[styles.rowLabel, { color: colors.text }]}>{label}</Text>
 				</View>
 			</View>
 
 			<View style={styles.rowRight}>
-				<Text style={styles.rowValue} numberOfLines={1} ellipsizeMode='tail'>
+				<Text
+					style={[styles.rowValue, { color: colors.textSecondary }]}
+					numberOfLines={1}
+					ellipsizeMode='tail'
+				>
 					{value || 'Не указано'}
 				</Text>
 
 				{editable && (
-					<Ionicons name='chevron-forward' size={20} color='#8E97A8' />
+					<Ionicons name='chevron-forward' size={20} color={colors.textMuted} />
 				)}
 			</View>
 		</TouchableOpacity>
@@ -57,6 +69,7 @@ function DataRow({
 
 export default function PersonalDataScreen() {
 	const { user, updateUserData } = useContext(AuthContext);
+	const { colors } = useContext(ThemeContext);
 
 	const [profile, setProfile] = useState({
 		email: '',
@@ -97,7 +110,9 @@ export default function PersonalDataScreen() {
 				weightKg:
 					data?.weightKg !== undefined && data?.weightKg !== null
 						? String(data.weightKg)
-						: '',
+						: user?.weightKg !== undefined && user?.weightKg !== null
+							? String(user.weightKg)
+							: '',
 				gender: data?.gender || user?.gender || '',
 			};
 
@@ -113,9 +128,7 @@ export default function PersonalDataScreen() {
 				weightKg:
 					user?.weightKg !== undefined && user?.weightKg !== null
 						? String(user.weightKg)
-						: user?.weight !== undefined && user?.weight !== null
-							? String(user.weight)
-							: '',
+						: '',
 				gender: user?.gender || '',
 			});
 		} finally {
@@ -221,12 +234,6 @@ export default function PersonalDataScreen() {
 						: nextProfile.weightKg
 							? Number(nextProfile.weightKg)
 							: undefined,
-				weight:
-					updated?.weightKg !== undefined && updated?.weightKg !== null
-						? updated.weightKg
-						: nextProfile.weightKg
-							? Number(nextProfile.weightKg)
-							: undefined,
 				gender: updated?.gender ?? nextProfile.gender,
 			});
 
@@ -261,26 +268,40 @@ export default function PersonalDataScreen() {
 
 	if (isLoading) {
 		return (
-			<SafeAreaView style={styles.safeArea}>
+			<SafeAreaView
+				style={[styles.safeArea, { backgroundColor: colors.background }]}
+			>
 				<View style={styles.loaderContainer}>
-					<ActivityIndicator size='large' color='#18B67A' />
+					<ActivityIndicator size='large' color={colors.primary} />
 				</View>
 			</SafeAreaView>
 		);
 	}
 
 	return (
-		<SafeAreaView style={styles.safeArea}>
-			<View style={styles.header}>
+		<SafeAreaView
+			style={[styles.safeArea, { backgroundColor: colors.background }]}
+		>
+			<View
+				style={[
+					styles.header,
+					{
+						backgroundColor: colors.background,
+						borderBottomColor: colors.border,
+					},
+				]}
+			>
 				<TouchableOpacity
 					style={styles.backButton}
 					onPress={() => router.back()}
 					activeOpacity={0.8}
 				>
-					<Ionicons name='arrow-back' size={28} color='#18B67A' />
+					<Ionicons name='arrow-back' size={28} color={colors.primary} />
 				</TouchableOpacity>
 
-				<Text style={styles.headerTitle}>Личные данные</Text>
+				<Text style={[styles.headerTitle, { color: colors.text }]}>
+					Личные данные
+				</Text>
 
 				<View style={styles.headerSpacer} />
 			</View>
@@ -289,23 +310,32 @@ export default function PersonalDataScreen() {
 				showsVerticalScrollIndicator={false}
 				contentContainerStyle={styles.content}
 			>
-				<View style={styles.card}>
+				<View
+					style={[
+						styles.card,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
 					<DataRow
+						colors={colors}
 						icon={
 							<MaterialCommunityIcons
 								name='email-outline'
 								size={20}
-								color='#19B97A'
+								color={colors.primary}
 							/>
 						}
 						label='Email'
 						value={emailText}
 						editable={false}
-						noBorder={false}
 					/>
 
 					<DataRow
-						icon={<Ionicons name='person' size={20} color='#19B97A' />}
+						colors={colors}
+						icon={<Ionicons name='person' size={20} color={colors.primary} />}
 						label='Имя'
 						value={fullName}
 						onPress={() =>
@@ -314,11 +344,12 @@ export default function PersonalDataScreen() {
 					/>
 
 					<DataRow
+						colors={colors}
 						icon={
 							<MaterialCommunityIcons
 								name='calendar-month-outline'
 								size={20}
-								color='#19B97A'
+								color={colors.primary}
 							/>
 						}
 						label='Дата рождения'
@@ -329,11 +360,12 @@ export default function PersonalDataScreen() {
 					/>
 
 					<DataRow
+						colors={colors}
 						icon={
 							<MaterialCommunityIcons
 								name='weight-kilogram'
 								size={20}
-								color='#19B97A'
+								color={colors.primary}
 							/>
 						}
 						label='Вес'
@@ -344,7 +376,10 @@ export default function PersonalDataScreen() {
 					/>
 
 					<DataRow
-						icon={<Ionicons name='male-outline' size={20} color='#19B97A' />}
+						colors={colors}
+						icon={
+							<Ionicons name='male-outline' size={20} color={colors.primary} />
+						}
 						label='Пол'
 						value={genderText}
 						onPress={openGenderModal}
@@ -357,7 +392,9 @@ export default function PersonalDataScreen() {
 					onPress={handleDeleteAccount}
 					activeOpacity={0.8}
 				>
-					<Text style={styles.deleteText}>Удалить аккаунт</Text>
+					<Text style={[styles.deleteText, { color: colors.danger }]}>
+						Удалить аккаунт
+					</Text>
 				</TouchableOpacity>
 			</ScrollView>
 
@@ -431,7 +468,6 @@ function applyLocalChange(profile, field, value) {
 const styles = StyleSheet.create({
 	safeArea: {
 		flex: 1,
-		backgroundColor: '#F4F4F4',
 		paddingTop: 20,
 	},
 
@@ -442,8 +478,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'space-between',
 		borderBottomWidth: 1,
-		borderBottomColor: '#ECECEC',
-		backgroundColor: '#F4F4F4',
 	},
 
 	backButton: {
@@ -456,7 +490,6 @@ const styles = StyleSheet.create({
 	headerTitle: {
 		fontSize: 16,
 		fontWeight: '700',
-		color: '#1F2937',
 	},
 
 	headerSpacer: {
@@ -471,11 +504,9 @@ const styles = StyleSheet.create({
 	},
 
 	card: {
-		backgroundColor: '#FFFFFF',
 		borderRadius: 18,
 		paddingHorizontal: 12,
 		paddingVertical: 4,
-		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 2 },
 		shadowOpacity: 0.07,
 		shadowRadius: 6,
@@ -488,7 +519,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'space-between',
 		borderBottomWidth: 1,
-		borderBottomColor: '#EEEEEE',
 		paddingVertical: 8,
 	},
 
@@ -513,7 +543,6 @@ const styles = StyleSheet.create({
 		width: 40,
 		height: 40,
 		borderRadius: 20,
-		backgroundColor: '#EEF5F1',
 		alignItems: 'center',
 		justifyContent: 'center',
 		marginRight: 12,
@@ -526,12 +555,10 @@ const styles = StyleSheet.create({
 	rowLabel: {
 		fontSize: 16,
 		fontWeight: '600',
-		color: '#1F2937',
 	},
 
 	rowValue: {
 		fontSize: 15,
-		color: '#6B7280',
 		marginRight: 6,
 		textAlign: 'right',
 		flexShrink: 1,
@@ -546,7 +573,6 @@ const styles = StyleSheet.create({
 	deleteText: {
 		fontSize: 16,
 		fontWeight: '700',
-		color: '#FF6B6B',
 	},
 
 	loaderContainer: {

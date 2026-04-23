@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
 	Modal,
 	View,
@@ -10,6 +10,7 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 } from 'react-native';
+import { ThemeContext } from '../context/ThemeContext';
 
 const EditFieldModal = ({
 	visible,
@@ -20,6 +21,7 @@ const EditFieldModal = ({
 	keyboardType = 'default',
 	isSaving = false,
 }) => {
+	const { colors, isDark } = useContext(ThemeContext);
 	const [value, setValue] = useState(initialValue || '');
 
 	useEffect(() => {
@@ -32,32 +34,61 @@ const EditFieldModal = ({
 				style={styles.overlay}
 				behavior={Platform.OS === 'ios' ? 'padding' : undefined}
 			>
-				<View style={styles.modal}>
-					<Text style={styles.title}>{title}</Text>
+				<View
+					style={[
+						styles.modal,
+						{
+							backgroundColor: colors.card,
+							shadowColor: colors.shadow,
+						},
+					]}
+				>
+					<Text style={[styles.title, { color: colors.text }]}>{title}</Text>
 
 					<TextInput
-						style={styles.input}
+						style={[
+							styles.input,
+							{
+								borderColor: colors.border,
+								backgroundColor: colors.cardSecondary,
+								color: colors.text,
+							},
+						]}
 						value={value}
 						onChangeText={setValue}
 						keyboardType={keyboardType}
 						autoFocus
 						placeholder='Введите значение'
-						placeholderTextColor='#A0A7B5'
+						placeholderTextColor={colors.textMuted}
 						editable={!isSaving}
 					/>
 
 					<View style={styles.buttons}>
 						<TouchableOpacity
 							onPress={onCancel}
-							style={[styles.button, styles.cancelButton]}
+							style={[
+								styles.button,
+								styles.cancelButton,
+								{
+									backgroundColor: isDark ? colors.cardSecondary : '#F3F4F6',
+								},
+							]}
 							disabled={isSaving}
 						>
-							<Text style={styles.cancelText}>Отмена</Text>
+							<Text
+								style={[styles.cancelText, { color: colors.textSecondary }]}
+							>
+								Отмена
+							</Text>
 						</TouchableOpacity>
 
 						<TouchableOpacity
 							onPress={() => onSave(value)}
-							style={[styles.button, styles.saveButton]}
+							style={[
+								styles.button,
+								styles.saveButton,
+								{ backgroundColor: colors.primary },
+							]}
 							disabled={isSaving}
 						>
 							{isSaving ? (
@@ -84,10 +115,8 @@ const styles = StyleSheet.create({
 
 	modal: {
 		width: '100%',
-		backgroundColor: '#FFFFFF',
 		borderRadius: 24,
 		padding: 20,
-		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.12,
 		shadowRadius: 10,
@@ -97,7 +126,6 @@ const styles = StyleSheet.create({
 	title: {
 		fontSize: 20,
 		fontWeight: '700',
-		color: '#1F2937',
 		marginBottom: 16,
 		textAlign: 'center',
 	},
@@ -105,12 +133,9 @@ const styles = StyleSheet.create({
 	input: {
 		height: 52,
 		borderWidth: 1,
-		borderColor: '#E5E7EB',
 		borderRadius: 16,
 		paddingHorizontal: 16,
 		fontSize: 16,
-		color: '#1F2937',
-		backgroundColor: '#F9FAFB',
 		marginBottom: 20,
 	},
 
@@ -127,18 +152,13 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 	},
 
-	cancelButton: {
-		backgroundColor: '#F3F4F6',
-	},
+	cancelButton: {},
 
-	saveButton: {
-		backgroundColor: '#18B67A',
-	},
+	saveButton: {},
 
 	cancelText: {
 		fontSize: 16,
 		fontWeight: '600',
-		color: '#6B7280',
 	},
 
 	saveText: {
