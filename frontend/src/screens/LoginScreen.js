@@ -81,6 +81,10 @@ export default function LoginScreen() {
 		}
 	}, [token]);
 
+	if (token) {
+		return null;
+	}
+
 	const validateEmail = value => {
 		return /\S+@\S+\.\S+/.test(value);
 	};
