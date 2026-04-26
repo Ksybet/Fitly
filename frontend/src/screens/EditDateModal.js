@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
 	Modal,
 	View,
@@ -6,10 +6,30 @@ import {
 	TouchableOpacity,
 	StyleSheet,
 	ActivityIndicator,
-	Platform,
+	ScrollView,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { ThemeContext } from '../context/ThemeContext';
+
+const months = [
+	'Январь',
+	'Февраль',
+	'Март',
+	'Апрель',
+	'Май',
+	'Июнь',
+	'Июль',
+	'Август',
+	'Сентябрь',
+	'Октябрь',
+	'Ноябрь',
+	'Декабрь',
+];
+
+const currentYear = new Date().getFullYear();
+
+const getDaysInMonth = (month, year) => {
+	return new Date(year, month, 0).getDate();
+};
 
 const EditDateModal = ({
 	visible,
@@ -20,27 +40,70 @@ const EditDateModal = ({
 }) => {
 	const { colors } = useContext(ThemeContext);
 
-	const [date, setDate] = useState(new Date());
+	const [day, setDay] = useState(1);
+	const [month, setMonth] = useState(1);
+	const [year, setYear] = useState(2000);
 
 	useEffect(() => {
 		if (initialDate) {
-			const parsed = new Date(initialDate);
-			if (!isNaN(parsed.getTime())) {
-				setDate(parsed);
+			const [parsedYear, parsedMonth, parsedDay] = initialDate
+				.split('-')
+				.map(Number);
+
+			if (parsedYear && parsedMonth && parsedDay) {
+				setYear(parsedYear);
+				setMonth(parsedMonth);
+				setDay(parsedDay);
 			}
 		}
 	}, [initialDate, visible]);
 
-	const handleChange = (event, selectedDate) => {
-		if (selectedDate) {
-			setDate(selectedDate);
+	const days = useMemo(() => {
+		const count = getDaysInMonth(month, year);
+		return Array.from({ length: count }, (_, index) => index + 1);
+	}, [month, year]);
+
+	const years = useMemo(() => {
+		return Array.from({ length: 101 }, (_, index) => currentYear - index);
+	}, []);
+
+	useEffect(() => {
+		const maxDay = getDaysInMonth(month, year);
+		if (day > maxDay) {
+			setDay(maxDay);
 		}
-	};
+	}, [month, year]);
 
 	const handleSave = () => {
-		const isoDate = date.toISOString().split('T')[0];
-		onSave(isoDate);
+		const formattedDay = String(day).padStart(2, '0');
+		const formattedMonth = String(month).padStart(2, '0');
+
+		onSave(`${year}-${formattedMonth}-${formattedDay}`);
 	};
+
+	const renderOption = (label, active, onPress) => (
+		<TouchableOpacity
+			key={label}
+			onPress={onPress}
+			style={[
+				styles.option,
+				{
+					backgroundColor: active ? colors.primary : colors.cardSecondary,
+				},
+			]}
+		>
+			<Text
+				style={[
+					styles.optionText,
+					{
+						color: active ? '#FFFFFF' : colors.text,
+					},
+				]}
+			>
+				{label}
+			</Text>
+		</TouchableOpacity>
+	);
 
 	return (
 		<Modal visible={visible} transparent animationType='fade'>
@@ -58,24 +121,62 @@ const EditDateModal = ({
 						Выберите дату
 					</Text>
 
-					<View style={styles.pickerWrapper}>
-						<DateTimePicker
-							value={date}
-							mode='date'
-							display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-							onChange={handleChange}
-							themeVariant={colors.background === '#0F172A' ? 'dark' : 'light'}
-						/>
+					<View style={styles.columns}>
+						<View style={styles.column}>
+							<Text
+								style={[styles.columnTitle, { color: colors.textSecondary }]}
+							>
+								День
+							</Text>
+							<ScrollView
+								style={styles.list}
+								showsVerticalScrollIndicator={false}
+							>
+								{days.map(item =>
+									renderOption(item, item === day, () => setDay(item)),
+								)}
+							</ScrollView>
+						</View>
+
+						<View style={styles.column}>
+							<Text
+								style={[styles.columnTitle, { color: colors.textSecondary }]}
+							>
+								Месяц
+							</Text>
+							<ScrollView
+								style={styles.list}
+								showsVerticalScrollIndicator={false}
+							>
+								{months.map((item, index) =>
+									renderOption(item, index + 1 === month, () =>
+										setMonth(index + 1),
+									),
+								)}
+							</ScrollView>
+						</View>
+
+						<View style={styles.column}>
+							<Text
+								style={[styles.columnTitle, { color: colors.textSecondary }]}
+							>
+								Год
+							</Text>
+							<ScrollView
+								style={styles.list}
+								showsVerticalScrollIndicator={false}
+							>
+								{years.map(item =>
+									renderOption(item, item === year, () => setYear(item)),
+								)}
+							</ScrollView>
+						</View>
 					</View>
 
 					<View style={styles.buttons}>
 						<TouchableOpacity
 							onPress={onCancel}
-							style={[
-								styles.button,
-								styles.cancelButton,
-								{ backgroundColor: colors.cardSecondary },
-							]}
+							style={[styles.button, { backgroundColor: colors.cardSecondary }]}
 							disabled={isSaving}
 						>
 							<Text
@@ -87,11 +188,7 @@ const EditDateModal = ({
 
 						<TouchableOpacity
 							onPress={handleSave}
-							style={[
-								styles.button,
-								styles.saveButton,
-								{ backgroundColor: colors.primary },
-							]}
+							style={[styles.button, { backgroundColor: colors.primary }]}
 							disabled={isSaving}
 						>
 							{isSaving ? (
@@ -131,9 +228,39 @@ const styles = StyleSheet.create({
 		marginBottom: 16,
 	},
 
-	pickerWrapper: {
-		alignItems: 'center',
+	columns: {
+		flexDirection: 'row',
+		gap: 8,
 		marginBottom: 16,
+	},
+
+	column: {
+		flex: 1,
+	},
+
+	columnTitle: {
+		fontSize: 13,
+		fontWeight: '700',
+		textAlign: 'center',
+		marginBottom: 8,
+	},
+
+	list: {
+		maxHeight: 190,
+	},
+
+	option: {
+		minHeight: 40,
+		borderRadius: 12,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: 8,
+		paddingHorizontal: 6,
+	},
+
+	optionText: {
+		fontSize: 14,
+		fontWeight: '600',
 	},
 
 	buttons: {
@@ -148,10 +275,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
-	cancelButton: {},
-
-	saveButton: {},
 
 	cancelText: {
 		fontSize: 16,

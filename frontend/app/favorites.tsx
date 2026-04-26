@@ -15,13 +15,15 @@ import { ThemeContext } from '../src/context/ThemeContext';
 
 const FAVORITES_STORAGE_KEY = 'fitly_favorites';
 
-type FavoriteKey = 'water' | 'weight';
+type FavoriteKey = 'water' | 'weight' | 'height' | 'bmi';
 
 type FavoritesState = Record<FavoriteKey, boolean>;
 
 const DEFAULT_FAVORITES: FavoritesState = {
 	water: true,
 	weight: true,
+	height: true,
+	bmi: true,
 };
 
 const favoriteItems: {
@@ -39,8 +41,22 @@ const favoriteItems: {
 	{
 		key: 'weight',
 		title: 'Вес',
-		subtitle: 'Текущий и целевой вес',
+		subtitle: 'Текущий вес пользователя',
 		icon: color => <Ionicons name='barbell-outline' size={20} color={color} />,
+	},
+	{
+		key: 'height',
+		title: 'Рост',
+		subtitle: 'Рост из личных данных',
+		icon: color => <Ionicons name='body-outline' size={20} color={color} />,
+	},
+	{
+		key: 'bmi',
+		title: 'ИМТ',
+		subtitle: 'Индекс массы тела',
+		icon: color => (
+			<Ionicons name='calculator-outline' size={20} color={color} />
+		),
 	},
 ];
 
@@ -163,7 +179,13 @@ export default function FavoritesScreen() {
 										]}
 									>
 										{item.icon(
-											item.key === 'water' ? colors.blue : colors.warning,
+											item.key === 'water'
+												? colors.blue
+												: item.key === 'weight'
+													? colors.warning
+													: item.key === 'height'
+														? colors.primary
+														: colors.success,
 										)}
 									</View>
 

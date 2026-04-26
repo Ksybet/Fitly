@@ -23,9 +23,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { AuthContext } from '../src/context/AuthContext';
 import { ThemeContext } from '../src/context/ThemeContext';
+import { getMyProfile } from '../src/api/profile.api';
+import { getGoals } from '../src/api/goals.api';
 import BottomNav from '../src/components/BottomNav';
 
-const GOALS_STORAGE_KEY = 'fitly_goals';
 const DAILY_DATA_STORAGE_KEY = 'fitly_daily_data';
 const FAVORITES_STORAGE_KEY = 'fitly_favorites';
 
@@ -68,12 +69,14 @@ type StepsProgressCircleProps = {
 	labelColor: string;
 };
 
-type FavoriteKey = 'water' | 'weight';
+type FavoriteKey = 'water' | 'weight' | 'height' | 'bmi';
 type FavoritesState = Record<FavoriteKey, boolean>;
 
 const DEFAULT_FAVORITES: FavoritesState = {
 	water: true,
 	weight: true,
+	height: true,
+	bmi: true,
 };
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
@@ -156,11 +159,26 @@ export default function HomeScreen() {
 	const { user } = useContext(AuthContext);
 	const { colors, isDark } = useContext(ThemeContext);
 
-	const userName =
-		user?.firstName || user?.name || user?.email?.split('@')[0] || 'Алексей';
+	const [profileData, setProfileData] = useState<{
+		weightKg: number | null;
+		heightCm: number | null;
+	}>({
+		weightKg: null,
+		heightCm: null,
+	});
 
-	const currentWeight = Number(user?.weightKg ?? 0);
+	const userName =
+		user?.firstName || user?.name || user?.email?.split('@')[0];
+
+	const currentWeight = Number(profileData.weightKg ?? 0);
 	const hasWeight = currentWeight > 0;
+	const currentHeight = Number(profileData.heightCm ?? 0);
+	const hasHeight = currentHeight > 0;
+
+	const bmiValue =
+		hasWeight && hasHeight
+			? currentWeight / Math.pow(currentHeight / 100, 2)
+			: null;
 
 	const [goals, setGoals] = useState<GoalsState>({
 		stepsGoal: null,
@@ -192,56 +210,56 @@ export default function HomeScreen() {
 
 	const loadHomeData = async () => {
 		try {
-			const [rawGoals, rawDailyData, rawFavorites] = await Promise.all([
-				AsyncStorage.getItem(GOALS_STORAGE_KEY),
-				AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY),
-				AsyncStorage.getItem(FAVORITES_STORAGE_KEY),
-			]);
+			const profile = await getMyProfile();
 
-			if (rawGoals) {
-				const parsedGoals = JSON.parse(rawGoals);
+			setProfileData({
+				weightKg: profile?.weightKg ?? null,
+				heightCm: profile?.heightCm ?? null,
+			});
+		const [apiGoals, rawDailyData, rawFavorites] = await Promise.all([
+			getGoals(),
+			AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY),
+			AsyncStorage.getItem(FAVORITES_STORAGE_KEY),
+		]);
 
-				setGoals({
-					stepsGoal:
-						parsedGoals?.stepsGoal !== undefined &&
-						parsedGoals?.stepsGoal !== null &&
-						Number(parsedGoals.stepsGoal) > 0
-							? Number(parsedGoals.stepsGoal)
-							: null,
-					calorieGoal:
-						parsedGoals?.calorieGoal !== undefined &&
-						parsedGoals?.calorieGoal !== null &&
-						Number(parsedGoals.calorieGoal) > 0
-							? Number(parsedGoals.calorieGoal)
-							: null,
-					weightGoal:
-						parsedGoals?.weightGoal !== undefined &&
-						parsedGoals?.weightGoal !== null &&
-						Number(parsedGoals.weightGoal) > 0
-							? Number(parsedGoals.weightGoal)
-							: null,
-					sleepGoalHours:
-						parsedGoals?.sleepGoalHours !== undefined &&
-						parsedGoals?.sleepGoalHours !== null &&
-						Number(parsedGoals.sleepGoalHours) > 0
-							? Number(parsedGoals.sleepGoalHours)
-							: null,
-					waterGoal:
-						parsedGoals?.waterGoal !== undefined &&
-						parsedGoals?.waterGoal !== null &&
-						Number(parsedGoals.waterGoal) > 0
-							? Number(parsedGoals.waterGoal)
-							: null,
-				});
-			} else {
-				setGoals({
-					stepsGoal: null,
-					calorieGoal: null,
-					weightGoal: null,
-					sleepGoalHours: null,
-					waterGoal: null,
-				});
+		const nextGoals: GoalsState = {
+			stepsGoal: null,
+			calorieGoal: null,
+			weightGoal: null,
+			sleepGoalHours: null,
+			waterGoal: null,
+		};
+
+		apiGoals.forEach((goal: any) => {
+			const value =
+				goal.targetValue !== undefined &&
+				goal.targetValue !== null &&
+				Number(goal.targetValue) > 0
+					? Number(goal.targetValue)
+					: null;
+
+			if (goal.goalType === 'steps') {
+				nextGoals.stepsGoal = value;
 			}
+
+			if (goal.goalType === 'calories') {
+				nextGoals.calorieGoal = value;
+			}
+
+			if (goal.goalType === 'weight') {
+				nextGoals.weightGoal = value;
+			}
+
+			if (goal.goalType === 'sleep') {
+				nextGoals.sleepGoalHours = value;
+			}
+
+			if (goal.goalType === 'water') {
+				nextGoals.waterGoal = value;
+			}
+		});
+
+setGoals(nextGoals);
 
 			if (rawDailyData) {
 				const parsedDailyData = JSON.parse(rawDailyData);
@@ -890,6 +908,67 @@ export default function HomeScreen() {
 										/>
 									</View>
 								) : null}
+							</View>
+						) : null}
+						{favorites.height ? (
+							<View
+								style={[
+									styles.favoriteCard,
+									{ backgroundColor: colors.card, shadowColor: colors.shadow },
+								]}
+							>
+								<View style={styles.favoriteTopRow}>
+									<Ionicons
+										name='body-outline'
+										size={18}
+										color={colors.primary}
+									/>
+									<Text
+										style={[styles.favoriteTitle, { color: colors.textMuted }]}
+									>
+										Рост
+									</Text>
+								</View>
+
+								<Text
+									style={[
+										styles.favoriteValue,
+										{ color: colors.textSecondary },
+									]}
+								>
+									{hasHeight ? `${currentHeight} см` : '—'}
+								</Text>
+							</View>
+						) : null}
+
+						{favorites.bmi ? (
+							<View
+								style={[
+									styles.favoriteCard,
+									{ backgroundColor: colors.card, shadowColor: colors.shadow },
+								]}
+							>
+								<View style={styles.favoriteTopRow}>
+									<Ionicons
+										name='calculator-outline'
+										size={18}
+										color={colors.success}
+									/>
+									<Text
+										style={[styles.favoriteTitle, { color: colors.textMuted }]}
+									>
+										ИМТ
+									</Text>
+								</View>
+
+								<Text
+									style={[
+										styles.favoriteValue,
+										{ color: colors.textSecondary },
+									]}
+								>
+									{bmiValue ? bmiValue.toFixed(1) : '—'}
+								</Text>
 							</View>
 						) : null}
 					</View>

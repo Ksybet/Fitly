@@ -12,6 +12,7 @@ type User = {
 	lastName?: string;
 	birthDate?: string;
 	weightKg?: number;
+	heightCm?: number;
 	gender?: string;
 	role?: string;
 	appVersion?: string;

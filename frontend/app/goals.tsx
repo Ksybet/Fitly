@@ -9,12 +9,10 @@ import {
 	TextInput,
 	Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
-
-const GOALS_STORAGE_KEY = 'fitly_goals';
+import { getGoals, updateGoals } from '../src/api/goals.api';
 
 type GoalsState = {
 	stepsGoal: string;
@@ -22,6 +20,11 @@ type GoalsState = {
 	weightGoal: string;
 	sleepGoalHours: string;
 	waterGoal: string;
+};
+
+type ApiGoal = {
+	goalType: string;
+	targetValue: number;
 };
 
 export default function GoalsScreen() {
@@ -41,38 +44,108 @@ export default function GoalsScreen() {
 		loadGoals();
 	}, []);
 
+	const mapApiGoalsToState = (apiGoals: ApiGoal[]) => {
+		const nextGoals: GoalsState = {
+			stepsGoal: '',
+			calorieGoal: '',
+			weightGoal: '',
+			sleepGoalHours: '',
+			waterGoal: '',
+		};
+
+		apiGoals.forEach(goal => {
+			const value =
+				goal.targetValue !== undefined && goal.targetValue !== null
+					? String(goal.targetValue)
+					: '';
+
+			if (goal.goalType === 'steps') {
+				nextGoals.stepsGoal = value;
+			}
+
+			if (goal.goalType === 'calories') {
+				nextGoals.calorieGoal = value;
+			}
+
+			if (goal.goalType === 'weight') {
+				nextGoals.weightGoal = value;
+			}
+
+			if (goal.goalType === 'sleep') {
+				nextGoals.sleepGoalHours = value;
+			}
+
+			if (goal.goalType === 'water') {
+				nextGoals.waterGoal = value;
+			}
+		});
+
+		return nextGoals;
+	};
+
+	const mapStateToApiGoals = () => {
+		const result = [];
+
+		if (goals.stepsGoal) {
+			result.push({
+				goalType: 'steps',
+				title: 'Цель по шагам',
+				targetValue: Number(goals.stepsGoal),
+				unit: 'steps',
+				status: 'active',
+			});
+		}
+
+		if (goals.calorieGoal) {
+			result.push({
+				goalType: 'calories',
+				title: 'Цель по калориям',
+				targetValue: Number(goals.calorieGoal),
+				unit: 'kcal',
+				status: 'active',
+			});
+		}
+
+		if (goals.weightGoal) {
+			result.push({
+				goalType: 'weight',
+				title: 'Целевой вес',
+				targetValue: Number(goals.weightGoal),
+				unit: 'kg',
+				status: 'active',
+			});
+		}
+
+		if (goals.sleepGoalHours) {
+			result.push({
+				goalType: 'sleep',
+				title: 'Цель сна',
+				targetValue: Number(goals.sleepGoalHours),
+				unit: 'hours',
+				status: 'active',
+			});
+		}
+
+		if (goals.waterGoal) {
+			result.push({
+				goalType: 'water',
+				title: 'Цель по воде',
+				targetValue: Number(goals.waterGoal),
+				unit: 'l',
+				status: 'active',
+			});
+		}
+
+		return result;
+	};
+
 	const loadGoals = async () => {
 		try {
-			const raw = await AsyncStorage.getItem(GOALS_STORAGE_KEY);
-			if (!raw) return;
-
-			const parsed = JSON.parse(raw);
-
-			setGoals({
-				stepsGoal:
-					parsed?.stepsGoal !== undefined && parsed?.stepsGoal !== null
-						? String(parsed.stepsGoal)
-						: '',
-				calorieGoal:
-					parsed?.calorieGoal !== undefined && parsed?.calorieGoal !== null
-						? String(parsed.calorieGoal)
-						: '',
-				weightGoal:
-					parsed?.weightGoal !== undefined && parsed?.weightGoal !== null
-						? String(parsed.weightGoal)
-						: '',
-				sleepGoalHours:
-					parsed?.sleepGoalHours !== undefined &&
-					parsed?.sleepGoalHours !== null
-						? String(parsed.sleepGoalHours)
-						: '',
-				waterGoal:
-					parsed?.waterGoal !== undefined && parsed?.waterGoal !== null
-						? String(parsed.waterGoal)
-						: '',
-			});
+			const apiGoals = await getGoals();
+			setGoals(mapApiGoalsToState(apiGoals));
 		} catch (e) {
 			console.log('Ошибка загрузки целей', e);
+			Alert.alert('Ошибка', 'Не удалось загрузить цели');
 		}
 	};
 
@@ -144,18 +217,9 @@ export default function GoalsScreen() {
 		try {
 			setIsSaving(true);
 
-			const payload = {
-				stepsGoal: goals.stepsGoal ? Number(goals.stepsGoal) : null,
-				calorieGoal: goals.calorieGoal ? Number(goals.calorieGoal) : null,
-				weightGoal: goals.weightGoal ? Number(goals.weightGoal) : null,
-				sleepGoalHours: goals.sleepGoalHours
-					? Number(goals.sleepGoalHours)
-					: null,
-				waterGoal: goals.waterGoal ? Number(goals.waterGoal) : null,
-				updatedAt: new Date().toISOString(),
-			};
+			const payload = mapStateToApiGoals();
+			await updateGoals(payload);
 
-			await AsyncStorage.setItem(GOALS_STORAGE_KEY, JSON.stringify(payload));
 			router.back();
 		} catch (e) {
 			console.log('Ошибка сохранения целей', e);
