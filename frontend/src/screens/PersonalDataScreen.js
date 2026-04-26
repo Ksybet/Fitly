@@ -74,9 +74,9 @@ export default function PersonalDataScreen() {
 	const [profile, setProfile] = useState({
 		email: '',
 		firstName: '',
-		lastName: '',
 		birthDate: '',
 		weightKg: '',
+		heightCm: '',
 		gender: '',
 	});
 
@@ -102,10 +102,9 @@ export default function PersonalDataScreen() {
 
 			const data = await getMyProfile();
 
-			const normalized = {
+			setProfile({
 				email: user?.email || '',
 				firstName: data?.firstName || user?.firstName || user?.name || '',
-				lastName: data?.lastName || user?.lastName || '',
 				birthDate: data?.birthDate || user?.birthDate || '',
 				weightKg:
 					data?.weightKg !== undefined && data?.weightKg !== null
@@ -113,21 +112,28 @@ export default function PersonalDataScreen() {
 						: user?.weightKg !== undefined && user?.weightKg !== null
 							? String(user.weightKg)
 							: '',
+				heightCm:
+					data?.heightCm !== undefined && data?.heightCm !== null
+						? String(data.heightCm)
+						: user?.heightCm !== undefined && user?.heightCm !== null
+							? String(user.heightCm)
+							: '',
 				gender: data?.gender || user?.gender || '',
-			};
-
-			setProfile(normalized);
+			});
 		} catch (e) {
 			console.log('Ошибка загрузки профиля', e);
 
 			setProfile({
 				email: user?.email || '',
 				firstName: user?.firstName || user?.name || '',
-				lastName: user?.lastName || '',
 				birthDate: user?.birthDate || '',
 				weightKg:
 					user?.weightKg !== undefined && user?.weightKg !== null
 						? String(user.weightKg)
+						: '',
+				heightCm:
+					user?.heightCm !== undefined && user?.heightCm !== null
+						? String(user.heightCm)
 						: '',
 				gender: user?.gender || '',
 			});
@@ -135,13 +141,6 @@ export default function PersonalDataScreen() {
 			setIsLoading(false);
 		}
 	};
-
-	const fullName = useMemo(() => {
-		return (
-			[profile.firstName, profile.lastName].filter(Boolean).join(' ') ||
-			'Не указано'
-		);
-	}, [profile.firstName, profile.lastName]);
 
 	const formattedBirthDate = useMemo(() => {
 		if (!profile.birthDate) return 'Не указано';
@@ -157,6 +156,7 @@ export default function PersonalDataScreen() {
 	}, [profile.birthDate]);
 
 	const weightText = profile.weightKg ? `${profile.weightKg} кг` : 'Не указано';
+	const heightText = profile.heightCm ? `${profile.heightCm} см` : 'Не указано';
 
 	const genderText =
 		profile.gender === 'male'
@@ -197,11 +197,16 @@ export default function PersonalDataScreen() {
 			setIsSaving(true);
 
 			if (
-				selectedField === 'weightKg' &&
+				['weightKg', 'heightCm'].includes(selectedField) &&
 				newValue !== '' &&
 				Number.isNaN(Number(String(newValue).replace(',', '.')))
 			) {
-				Alert.alert('Ошибка', 'Введите корректный вес');
+				Alert.alert(
+					'Ошибка',
+					selectedField === 'weightKg'
+						? 'Введите корректный вес'
+						: 'Введите корректный рост',
+				);
 				return;
 			}
 
@@ -213,19 +218,21 @@ export default function PersonalDataScreen() {
 			setProfile({
 				email: profile.email,
 				firstName: updated?.firstName ?? nextProfile.firstName,
-				lastName: updated?.lastName ?? nextProfile.lastName,
 				birthDate: updated?.birthDate ?? nextProfile.birthDate,
 				weightKg:
 					updated?.weightKg !== undefined && updated?.weightKg !== null
 						? String(updated.weightKg)
 						: nextProfile.weightKg,
+				heightCm:
+					updated?.heightCm !== undefined && updated?.heightCm !== null
+						? String(updated.heightCm)
+						: nextProfile.heightCm,
 				gender: updated?.gender ?? nextProfile.gender,
 			});
 
 			updateUserData({
 				email: profile.email,
 				firstName: updated?.firstName ?? nextProfile.firstName,
-				lastName: updated?.lastName ?? nextProfile.lastName,
 				name: updated?.firstName ?? nextProfile.firstName ?? user?.name ?? '',
 				birthDate: updated?.birthDate ?? nextProfile.birthDate,
 				weightKg:
@@ -233,6 +240,12 @@ export default function PersonalDataScreen() {
 						? updated.weightKg
 						: nextProfile.weightKg
 							? Number(nextProfile.weightKg)
+							: undefined,
+				heightCm:
+					updated?.heightCm !== undefined && updated?.heightCm !== null
+						? updated.heightCm
+						: nextProfile.heightCm
+							? Number(nextProfile.heightCm)
 							: undefined,
 				gender: updated?.gender ?? nextProfile.gender,
 			});
@@ -337,7 +350,7 @@ export default function PersonalDataScreen() {
 						colors={colors}
 						icon={<Ionicons name='person' size={20} color={colors.primary} />}
 						label='Имя'
-						value={fullName}
+						value={profile.firstName || 'Не указано'}
 						onPress={() =>
 							openFieldModal('firstName', 'Имя', profile.firstName)
 						}
@@ -372,6 +385,22 @@ export default function PersonalDataScreen() {
 						value={weightText}
 						onPress={() =>
 							openFieldModal('weightKg', 'Вес', profile.weightKg, 'numeric')
+						}
+					/>
+
+					<DataRow
+						colors={colors}
+						icon={
+							<MaterialCommunityIcons
+								name='human-male-height'
+								size={20}
+								color={colors.primary}
+							/>
+						}
+						label='Рост'
+						value={heightText}
+						onPress={() =>
+							openFieldModal('heightCm', 'Рост', profile.heightCm, 'numeric')
 						}
 					/>
 
@@ -438,6 +467,9 @@ function buildPayload(field, value) {
 		case 'weightKg':
 			return { weightKg: Number(String(value).replace(',', '.')) };
 
+		case 'heightCm':
+			return { heightCm: Number(String(value).replace(',', '.')) };
+
 		case 'gender':
 			return { gender: value };
 
@@ -456,6 +488,9 @@ function applyLocalChange(profile, field, value) {
 
 		case 'weightKg':
 			return { ...profile, weightKg: value };
+
+		case 'heightCm':
+			return { ...profile, heightCm: value };
 
 		case 'gender':
 			return { ...profile, gender: value };
