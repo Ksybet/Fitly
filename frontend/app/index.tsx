@@ -2,14 +2,16 @@ import React, { useContext } from 'react';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 import { AuthContext } from '../src/context/AuthContext';
+import { ThemeContext } from '../src/context/ThemeContext';
 
 export default function Index() {
 	const { token, isLoading } = useContext(AuthContext);
+	const { colors } = useContext(ThemeContext);
 
 	if (isLoading) {
 		return (
-			<View style={styles.container}>
-				<ActivityIndicator size='large' color='#20C07A' />
+			<View style={[styles.container, { backgroundColor: colors.background }]}>
+				<ActivityIndicator size='large' color={colors.primary} />
 			</View>
 		);
 	}
@@ -24,7 +26,6 @@ export default function Index() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#FFFFFF',
 		justifyContent: 'center',
 		alignItems: 'center',
 	},
