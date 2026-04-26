@@ -8,14 +8,12 @@ import {
 	Alert,
 	Platform,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
-
-const DAILY_DATA_STORAGE_KEY = 'fitly_daily_data';
+import { getTodaySleep, updateTodaySleep } from '../src/api/sleep.api';
 
 type PickerField = 'start' | 'end' | null;
 
@@ -37,10 +35,9 @@ export default function SleepScreen() {
 
 	const loadSleepData = async () => {
 		try {
-			const raw = await AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY);
-			if (!raw) return;
+			const data = await getTodaySleep();
 
-			const data = JSON.parse(raw);
+			if (!data) return;
 
 			setSleepQuality(data?.sleepQuality ?? '');
 			setSleepStart(data?.sleepStart ?? '');
@@ -179,34 +176,13 @@ export default function SleepScreen() {
 		try {
 			setIsSaving(true);
 
-			const raw = await AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY);
-			const prev = raw ? JSON.parse(raw) : {};
-
-			const updated = {
-				steps: Number(prev?.steps ?? 0),
+			await updateTodaySleep({
+				sleepStart,
+				sleepEnd,
 				sleepHours: duration.hours,
 				sleepMinutes: duration.minutes,
 				sleepQuality,
-				sleepStart,
-				sleepEnd,
-				calories: Number(prev?.calories ?? 0),
-				moodScore:
-					prev?.moodScore !== undefined && prev?.moodScore !== null
-						? Number(prev.moodScore)
-						: null,
-				moodLabel: prev?.moodLabel ?? '',
-				moodEmoji: prev?.moodEmoji ?? '',
-				waterCurrent:
-					prev?.waterCurrent !== undefined && prev?.waterCurrent !== null
-						? Number(prev.waterCurrent)
-						: null,
-				updatedAt: new Date().toISOString(),
-			};
-
-			await AsyncStorage.setItem(
-				DAILY_DATA_STORAGE_KEY,
-				JSON.stringify(updated),
-			);
+			});
 
 			router.back();
 		} catch (e) {

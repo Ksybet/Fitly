@@ -7,13 +7,11 @@ import {
 	ScrollView,
 	Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
-
-const FAVORITES_STORAGE_KEY = 'fitly_favorites';
+import { getFavorites, updateFavorites } from '../src/api/favorites.api';
 
 type FavoriteKey = 'water' | 'weight' | 'height' | 'bmi';
 
@@ -73,48 +71,43 @@ export default function FavoritesScreen() {
 
 	const loadFavorites = async () => {
 		try {
-			const raw = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
-			if (!raw) return;
+			const data = await getFavorites();
 
-			const parsed = JSON.parse(raw);
 			setFavorites({
-				...DEFAULT_FAVORITES,
-				...parsed,
+				water: Boolean(data?.water),
+				weight: Boolean(data?.weight),
+				height: Boolean(data?.height),
+				bmi: Boolean(data?.bmi),
 			});
 		} catch (e) {
 			console.log('Ошибка загрузки избранного', e);
 		}
 	};
 
-	const toggleFavorite = (key: FavoriteKey) => {
-		setFavorites(prev => ({
-			...prev,
-			[key]: !prev[key],
-		}));
-	};
-
-	const saveFavorites = async () => {
+	const toggleFavorite = async (key: FavoriteKey) => {
 		try {
-			setIsSaving(true);
+			const updated = {
+				...favorites,
+				[key]: !favorites[key],
+			};
 
-			const enabledCount = Object.values(favorites).filter(Boolean).length;
-			if (enabledCount === 0) {
-				Alert.alert('Ошибка', 'Выбери хотя бы одну карточку');
-				return;
-			}
-
-			await AsyncStorage.setItem(
-				FAVORITES_STORAGE_KEY,
-				JSON.stringify(favorites),
-			);
-
-			router.back();
+			setFavorites(updated);
+			await updateFavorites(updated);
 		} catch (e) {
 			console.log('Ошибка сохранения избранного', e);
 			Alert.alert('Ошибка', 'Не удалось сохранить избранное');
-		} finally {
-			setIsSaving(false);
 		}
+	};
+
+	const saveFavorites = async () => {
+		const enabledCount = Object.values(favorites).filter(Boolean).length;
+
+		if (enabledCount === 0) {
+			Alert.alert('Ошибка', 'Выбери хотя бы одну карточку');
+			return;
+		}
+
+		router.back();
 	};
 
 	return (

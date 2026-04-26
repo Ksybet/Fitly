@@ -11,13 +11,7 @@ import {
 	Animated,
 	Easing,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-	Ionicons,
-	MaterialIcons,
-	FontAwesome5,
-	Feather,
-} from '@expo/vector-icons';
+import { Ionicons, MaterialIcons, Feather } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -25,10 +19,12 @@ import { AuthContext } from '../src/context/AuthContext';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getMyProfile } from '../src/api/profile.api';
 import { getGoals } from '../src/api/goals.api';
+import { getTodayWater, addWater, resetTodayWater } from '../src/api/water.api';
+import { getTodaySleep } from '../src/api/sleep.api';
+import { getTodayMood } from '../src/api/mood.api';
+import { getFavorites } from '../src/api/favorites.api';
+import { getTodayDaily, updateTodayDaily } from '../src/api/daily.api';
 import BottomNav from '../src/components/BottomNav';
-
-const DAILY_DATA_STORAGE_KEY = 'fitly_daily_data';
-const FAVORITES_STORAGE_KEY = 'fitly_favorites';
 
 type ActionButtonProps = {
 	icon: React.ReactNode;
@@ -167,19 +163,6 @@ export default function HomeScreen() {
 		heightCm: null,
 	});
 
-	const userName =
-		user?.firstName || user?.name || user?.email?.split('@')[0];
-
-	const currentWeight = Number(profileData.weightKg ?? 0);
-	const hasWeight = currentWeight > 0;
-	const currentHeight = Number(profileData.heightCm ?? 0);
-	const hasHeight = currentHeight > 0;
-
-	const bmiValue =
-		hasWeight && hasHeight
-			? currentWeight / Math.pow(currentHeight / 100, 2)
-			: null;
-
 	const [goals, setGoals] = useState<GoalsState>({
 		stepsGoal: null,
 		calorieGoal: null,
@@ -208,95 +191,95 @@ export default function HomeScreen() {
 	const [quickEditValue, setQuickEditValue] = useState('');
 	const [isSavingQuickEdit, setIsSavingQuickEdit] = useState(false);
 
+	const userName = user?.firstName || user?.name || user?.email?.split('@')[0];
+
+	const currentWeight = Number(profileData.weightKg ?? 0);
+	const hasWeight = currentWeight > 0;
+	const currentHeight = Number(profileData.heightCm ?? 0);
+	const hasHeight = currentHeight > 0;
+
+	const bmiValue =
+		hasWeight && hasHeight
+			? currentWeight / Math.pow(currentHeight / 100, 2)
+			: null;
+
 	const loadHomeData = async () => {
 		try {
-			const profile = await getMyProfile();
+			const [
+				profile,
+				todayWater,
+				todaySleep,
+				todayMood,
+				todayDaily,
+				apiGoals,
+				apiFavorites,
+			] = await Promise.all([
+				getMyProfile(),
+				getTodayWater(),
+				getTodaySleep(),
+				getTodayMood(),
+				getTodayDaily(),
+				getGoals(),
+				getFavorites(),
+			]);
 
 			setProfileData({
 				weightKg: profile?.weightKg ?? null,
 				heightCm: profile?.heightCm ?? null,
 			});
-		const [apiGoals, rawDailyData, rawFavorites] = await Promise.all([
-			getGoals(),
-			AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY),
-			AsyncStorage.getItem(FAVORITES_STORAGE_KEY),
-		]);
 
-		const nextGoals: GoalsState = {
-			stepsGoal: null,
-			calorieGoal: null,
-			weightGoal: null,
-			sleepGoalHours: null,
-			waterGoal: null,
-		};
+			const nextGoals: GoalsState = {
+				stepsGoal: null,
+				calorieGoal: null,
+				weightGoal: null,
+				sleepGoalHours: null,
+				waterGoal: null,
+			};
 
-		apiGoals.forEach((goal: any) => {
-			const value =
-				goal.targetValue !== undefined &&
-				goal.targetValue !== null &&
-				Number(goal.targetValue) > 0
-					? Number(goal.targetValue)
-					: null;
+			apiGoals.forEach((goal: any) => {
+				const value =
+					goal.targetValue !== undefined &&
+					goal.targetValue !== null &&
+					Number(goal.targetValue) > 0
+						? Number(goal.targetValue)
+						: null;
 
-			if (goal.goalType === 'steps') {
-				nextGoals.stepsGoal = value;
-			}
+				if (goal.goalType === 'steps') nextGoals.stepsGoal = value;
+				if (goal.goalType === 'calories') nextGoals.calorieGoal = value;
+				if (goal.goalType === 'weight') nextGoals.weightGoal = value;
+				if (goal.goalType === 'sleep') nextGoals.sleepGoalHours = value;
+				if (goal.goalType === 'water') nextGoals.waterGoal = value;
+			});
 
-			if (goal.goalType === 'calories') {
-				nextGoals.calorieGoal = value;
-			}
+			setGoals(nextGoals);
 
-			if (goal.goalType === 'weight') {
-				nextGoals.weightGoal = value;
-			}
+			setDailyData({
+				steps: Number(todayDaily?.steps ?? 0),
+				sleepHours: Number(todaySleep?.sleepHours ?? 0),
+				sleepMinutes: Number(todaySleep?.sleepMinutes ?? 0),
+				sleepQuality: todaySleep?.sleepQuality ?? '',
+				sleepStart: todaySleep?.sleepStart ?? '',
+				sleepEnd: todaySleep?.sleepEnd ?? '',
+				calories: Number(todayDaily?.calories ?? 0),
+				moodScore:
+					todayMood?.moodScore !== undefined && todayMood?.moodScore !== null
+						? Number(todayMood.moodScore)
+						: null,
+				moodLabel: todayMood?.moodLabel ?? '',
+				moodEmoji: todayMood?.moodEmoji ?? '',
+				waterCurrent:
+					Number(todayWater?.totalMl ?? 0) > 0
+						? Number(todayWater.totalMl) / 1000
+						: null,
+			});
 
-			if (goal.goalType === 'sleep') {
-				nextGoals.sleepGoalHours = value;
-			}
-
-			if (goal.goalType === 'water') {
-				nextGoals.waterGoal = value;
-			}
-		});
-
-setGoals(nextGoals);
-
-			if (rawDailyData) {
-				const parsedDailyData = JSON.parse(rawDailyData);
-
-				setDailyData({
-					steps: Number(parsedDailyData?.steps ?? 0),
-					sleepHours: Number(parsedDailyData?.sleepHours ?? 0),
-					sleepMinutes: Number(parsedDailyData?.sleepMinutes ?? 0),
-					sleepQuality: parsedDailyData?.sleepQuality ?? '',
-					sleepStart: parsedDailyData?.sleepStart ?? '',
-					sleepEnd: parsedDailyData?.sleepEnd ?? '',
-					calories: Number(parsedDailyData?.calories ?? 0),
-					moodScore:
-						parsedDailyData?.moodScore !== undefined &&
-						parsedDailyData?.moodScore !== null
-							? Number(parsedDailyData.moodScore)
-							: null,
-					moodLabel: parsedDailyData?.moodLabel ?? '',
-					moodEmoji: parsedDailyData?.moodEmoji ?? '',
-					waterCurrent:
-						parsedDailyData?.waterCurrent !== undefined &&
-						parsedDailyData?.waterCurrent !== null &&
-						Number(parsedDailyData.waterCurrent) > 0
-							? Number(parsedDailyData.waterCurrent)
-							: null,
-				});
-			}
-
-			if (rawFavorites) {
-				const parsedFavorites = JSON.parse(rawFavorites);
-				setFavorites({
-					...DEFAULT_FAVORITES,
-					...parsedFavorites,
-				});
-			} else {
-				setFavorites(DEFAULT_FAVORITES);
-			}
+			setFavorites({
+				...DEFAULT_FAVORITES,
+				water: Boolean(apiFavorites?.water),
+				weight: Boolean(apiFavorites?.weight),
+				height: Boolean(apiFavorites?.height),
+				bmi: Boolean(apiFavorites?.bmi),
+			});
 		} catch (e) {
 			console.log('Ошибка загрузки данных Home', e);
 		}
@@ -405,55 +388,38 @@ setGoals(nextGoals);
 		try {
 			setIsSavingQuickEdit(true);
 
-			const rawDailyData = await AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY);
-			const parsedDailyData = rawDailyData ? JSON.parse(rawDailyData) : {};
+			let updatedDaily: any = null;
+			let updatedWaterLiters: number | null = null;
 
-			const updatedPayload = {
-				steps: Number(parsedDailyData?.steps ?? 0),
-				sleepHours: Number(parsedDailyData?.sleepHours ?? 0),
-				sleepMinutes: Number(parsedDailyData?.sleepMinutes ?? 0),
-				sleepQuality: parsedDailyData?.sleepQuality ?? '',
-				sleepStart: parsedDailyData?.sleepStart ?? '',
-				sleepEnd: parsedDailyData?.sleepEnd ?? '',
-				calories: Number(parsedDailyData?.calories ?? 0),
-				moodScore:
-					parsedDailyData?.moodScore !== undefined &&
-					parsedDailyData?.moodScore !== null
-						? Number(parsedDailyData.moodScore)
-						: null,
-				moodLabel: parsedDailyData?.moodLabel ?? '',
-				moodEmoji: parsedDailyData?.moodEmoji ?? '',
-				waterCurrent:
-					parsedDailyData?.waterCurrent !== undefined &&
-					parsedDailyData?.waterCurrent !== null
-						? Number(parsedDailyData.waterCurrent)
-						: null,
-				updatedAt: new Date().toISOString(),
-			};
-
-			if (quickEditField === 'steps') {
-				updatedPayload.steps = numericValue;
-			}
-
-			if (quickEditField === 'calories') {
-				updatedPayload.calories = numericValue;
+			if (quickEditField === 'steps' || quickEditField === 'calories') {
+				updatedDaily = await updateTodayDaily({
+					steps: quickEditField === 'steps' ? numericValue : dailyData.steps,
+					calories:
+						quickEditField === 'calories' ? numericValue : dailyData.calories,
+				});
 			}
 
 			if (quickEditField === 'water') {
-				updatedPayload.waterCurrent = numericValue;
-			}
+				await resetTodayWater();
 
-			await AsyncStorage.setItem(
-				DAILY_DATA_STORAGE_KEY,
-				JSON.stringify(updatedPayload),
-			);
+				if (numericValue > 0) {
+					const updatedWater = await addWater(Math.round(numericValue * 1000));
+					updatedWaterLiters = Number(updatedWater.totalMl || 0) / 1000;
+				}
+			}
 
 			setDailyData(prev => ({
 				...prev,
-				steps: quickEditField === 'steps' ? numericValue : prev.steps,
-				calories: quickEditField === 'calories' ? numericValue : prev.calories,
+				steps:
+					quickEditField === 'steps'
+						? Number(updatedDaily?.steps ?? numericValue)
+						: prev.steps,
+				calories:
+					quickEditField === 'calories'
+						? Number(updatedDaily?.calories ?? numericValue)
+						: prev.calories,
 				waterCurrent:
-					quickEditField === 'water' ? numericValue : prev.waterCurrent,
+					quickEditField === 'water' ? updatedWaterLiters : prev.waterCurrent,
 			}));
 
 			closeQuickEdit();
@@ -910,6 +876,7 @@ setGoals(nextGoals);
 								) : null}
 							</View>
 						) : null}
+
 						{favorites.height ? (
 							<View
 								style={[
@@ -1108,25 +1075,20 @@ const styles = StyleSheet.create({
 	container: {
 		flex: 1,
 	},
-
 	scrollContent: {
 		paddingHorizontal: 16,
 	},
-
 	header: {
 		marginBottom: 10,
 	},
-
 	brandRow: {
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
 	logo: {
 		fontSize: 30,
 		fontWeight: '700',
 	},
-
 	headerIcon: {
 		position: 'absolute',
 		right: 0,
@@ -1137,33 +1099,27 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		alignItems: 'center',
 	},
-
 	greetingRow: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
 		marginBottom: 14,
 	},
-
 	greetingTextBlock: {
 		flex: 1,
 		paddingRight: 12,
 	},
-
 	greetingTitle: {
 		fontSize: 17,
 		fontWeight: '700',
 	},
-
 	greetingSubtitle: {
 		fontSize: 12,
 	},
-
 	targetButton: {
 		width: 48,
 		height: 48,
 	},
-
 	targetIconWrapper: {
 		width: 42,
 		height: 42,
@@ -1171,13 +1127,11 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
 	statsRow: {
 		flexDirection: 'row',
 		gap: 10,
 		marginBottom: 16,
 	},
-
 	card: {
 		borderRadius: 20,
 		padding: 12,
@@ -1186,18 +1140,15 @@ const styles = StyleSheet.create({
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 3,
 	},
-
 	stepsCard: {
 		width: '37%',
 		minHeight: 240,
 	},
-
 	stepsCircleWrapper: {
 		flex: 1,
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
 	stepsCircleSvgWrapper: {
 		width: 100,
 		height: 100,
@@ -1205,48 +1156,39 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		position: 'relative',
 	},
-
 	stepsSvg: {
 		position: 'absolute',
 	},
-
 	stepsCircleContent: {
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
 	stepsValue: {
 		fontSize: 24,
 		fontWeight: '700',
 	},
-
 	stepsLabel: {
 		fontSize: 13,
 	},
-
 	stepsGoalText: {
 		fontSize: 12,
 		marginTop: 6,
 		marginBottom: 6,
 		textAlign: 'center',
 	},
-
 	stepsTrack: {
 		height: 6,
 		borderRadius: 4,
 		overflow: 'hidden',
 	},
-
 	stepsFill: {
 		height: '100%',
 		borderRadius: 4,
 	},
-
 	rightStats: {
 		width: '59%',
 		gap: 10,
 	},
-
 	smallCard: {
 		borderRadius: 20,
 		padding: 12,
@@ -1256,67 +1198,55 @@ const styles = StyleSheet.create({
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 3,
 	},
-
 	smallMainValue: {
 		fontSize: 22,
 		fontWeight: '700',
 	},
-
 	smallAccentText: {
 		fontSize: 13,
 		marginTop: 2,
 	},
-
 	sleepBar: {
 		height: 4,
 		width: 60,
 		marginVertical: 6,
 		borderRadius: 4,
 	},
-
 	sleepTrack: {
 		height: 6,
 		borderRadius: 4,
 		marginVertical: 6,
 		overflow: 'hidden',
 	},
-
 	sleepFill: {
 		height: '100%',
 		borderRadius: 4,
 	},
-
 	smallHint: {
 		fontSize: 12,
 	},
-
 	kcalRow: {
 		flexDirection: 'row',
 		alignItems: 'flex-end',
 	},
-
 	kcalText: {
 		fontSize: 14,
 		marginTop: 4,
 	},
-
 	caloriesTrack: {
 		height: 6,
 		borderRadius: 4,
 		marginTop: 8,
 		overflow: 'hidden',
 	},
-
 	caloriesFill: {
 		height: '100%',
 	},
-
 	actionsRow: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		marginBottom: 18,
 	},
-
 	actionButton: {
 		width: '48%',
 		height: 90,
@@ -1328,31 +1258,25 @@ const styles = StyleSheet.create({
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 2,
 	},
-
 	actionIcon: {
 		marginBottom: 6,
 	},
-
 	actionLabel: {
 		fontSize: 12,
 	},
-
 	section: {
 		marginBottom: 16,
 	},
-
 	sectionHeader: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
 		marginBottom: 10,
 	},
-
 	sectionTitle: {
 		fontSize: 17,
 		fontWeight: '700',
 	},
-
 	diaryCard: {
 		borderRadius: 18,
 		paddingHorizontal: 16,
@@ -1362,12 +1286,10 @@ const styles = StyleSheet.create({
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 2,
 	},
-
 	diaryLeft: {
 		flexDirection: 'row',
 		alignItems: 'center',
 	},
-
 	moodEmojiCircle: {
 		width: 42,
 		height: 42,
@@ -1376,42 +1298,34 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		marginRight: 12,
 	},
-
 	moodEmojiText: {
 		fontSize: 22,
 	},
-
 	diaryTextWrap: {
 		flex: 1,
 	},
-
 	diaryText: {
 		fontSize: 18,
 		fontWeight: '700',
 	},
-
 	diarySubtext: {
 		fontSize: 12,
 		marginTop: 2,
 	},
-
 	diaryRight: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		gap: 8,
 	},
-
 	diaryScore: {
 		fontSize: 14,
 		fontWeight: '700',
 	},
-
 	favoritesRow: {
 		flexDirection: 'row',
 		flexWrap: 'wrap',
 		gap: 12,
 	},
-
 	favoriteCard: {
 		width: '48%',
 		borderRadius: 18,
@@ -1422,43 +1336,36 @@ const styles = StyleSheet.create({
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 2,
 	},
-
 	favoriteTopRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		marginBottom: 8,
 	},
-
 	favoriteTitle: {
 		marginLeft: 6,
 		fontSize: 14,
 		fontWeight: '600',
 	},
-
 	favoriteValue: {
 		fontSize: 21,
 		fontWeight: '700',
 		marginBottom: 10,
 	},
-
 	favoriteTrack: {
 		height: 6,
 		borderRadius: 4,
 		overflow: 'hidden',
 	},
-
 	favoriteFill: {
 		height: '100%',
 		borderRadius: 4,
 	},
-
 	modalOverlay: {
 		flex: 1,
 		backgroundColor: 'rgba(0,0,0,0.35)',
 		justifyContent: 'center',
 		paddingHorizontal: 20,
 	},
-
 	modalCard: {
 		borderRadius: 20,
 		padding: 18,
@@ -1467,20 +1374,17 @@ const styles = StyleSheet.create({
 		shadowOffset: { width: 0, height: 2 },
 		elevation: 4,
 	},
-
 	modalTitle: {
 		fontSize: 18,
 		fontWeight: '700',
 		marginBottom: 6,
 		textAlign: 'center',
 	},
-
 	modalSubtitle: {
 		fontSize: 13,
 		textAlign: 'center',
 		marginBottom: 14,
 	},
-
 	modalInputWrap: {
 		height: 54,
 		borderWidth: 1,
@@ -1490,23 +1394,19 @@ const styles = StyleSheet.create({
 		flexDirection: 'row',
 		alignItems: 'center',
 	},
-
 	modalInput: {
 		flex: 1,
 		fontSize: 16,
 	},
-
 	modalInputUnit: {
 		fontSize: 14,
 		fontWeight: '600',
 		marginLeft: 10,
 	},
-
 	modalButtons: {
 		flexDirection: 'row',
 		gap: 12,
 	},
-
 	modalButton: {
 		flex: 1,
 		height: 48,
@@ -1514,16 +1414,12 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
-
 	modalCancelButton: {},
-
 	modalSaveButton: {},
-
 	modalCancelText: {
 		fontSize: 15,
 		fontWeight: '600',
 	},
-
 	modalSaveText: {
 		fontSize: 15,
 		fontWeight: '700',

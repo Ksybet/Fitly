@@ -7,13 +7,11 @@ import {
 	ScrollView,
 	Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
-
-const DAILY_DATA_STORAGE_KEY = 'fitly_daily_data';
+import { getTodayMood, updateTodayMood } from '../src/api/mood.api';
 
 type MoodMeta = {
 	emoji: string;
@@ -42,17 +40,12 @@ export default function MoodScreen() {
 
 	const loadMood = async () => {
 		try {
-			const raw = await AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY);
-			if (!raw) return;
+			const data = await getTodayMood();
 
-			const parsed = JSON.parse(raw);
+			if (!data) return;
 
-			if (
-				parsed?.moodScore !== undefined &&
-				parsed?.moodScore !== null &&
-				!Number.isNaN(Number(parsed.moodScore))
-			) {
-				setSelectedScore(Number(parsed.moodScore));
+			if (data.moodScore !== undefined && data.moodScore !== null) {
+				setSelectedScore(Number(data.moodScore));
 			}
 		} catch (e) {
 			console.log('Ошибка загрузки настроения', e);
@@ -76,31 +69,12 @@ export default function MoodScreen() {
 		try {
 			setIsSaving(true);
 
-			const raw = await AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY);
-			const prev = raw ? JSON.parse(raw) : {};
-
-			const updated = {
-				steps: Number(prev?.steps ?? 0),
-				sleepHours: Number(prev?.sleepHours ?? 0),
-				sleepMinutes: Number(prev?.sleepMinutes ?? 0),
-				sleepQuality: prev?.sleepQuality ?? '',
-				sleepStart: prev?.sleepStart ?? '',
-				sleepEnd: prev?.sleepEnd ?? '',
-				calories: Number(prev?.calories ?? 0),
+			await updateTodayMood({
 				moodScore: selectedScore,
 				moodLabel: moodMeta.label,
 				moodEmoji: moodMeta.emoji,
-				waterCurrent:
-					prev?.waterCurrent !== undefined && prev?.waterCurrent !== null
-						? Number(prev.waterCurrent)
-						: null,
-				updatedAt: new Date().toISOString(),
-			};
-
-			await AsyncStorage.setItem(
-				DAILY_DATA_STORAGE_KEY,
-				JSON.stringify(updated),
-			);
+				note: '',
+			});
 
 			router.back();
 		} catch (e) {
