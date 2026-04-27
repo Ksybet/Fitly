@@ -20,7 +20,7 @@ async function getTodaySleep(userId) {
 				updated_at AS updatedAt
 			FROM SleepEntries
 			WHERE user_id = @userId
-			  AND sleep_date = CAST(SYSUTCDATETIME() AS DATE)
+			  AND sleep_date = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0] || null;
@@ -42,7 +42,7 @@ async function upsertTodaySleep(userId, sleepData) {
 			USING (
 				SELECT
 					@userId AS user_id,
-					CAST(SYSUTCDATETIME() AS DATE) AS sleep_date
+					CAST(GETDATE() AS DATE) AS sleep_date
 			) AS source
 			ON target.user_id = source.user_id
 			   AND target.sleep_date = source.sleep_date
@@ -54,7 +54,7 @@ async function upsertTodaySleep(userId, sleepData) {
 					duration_hours = @sleepHours,
 					duration_minutes = @sleepMinutes,
 					quality = @sleepQuality,
-					updated_at = SYSUTCDATETIME()
+					updated_at = GETDATE()
 
 			WHEN NOT MATCHED THEN
 				INSERT (
@@ -68,7 +68,7 @@ async function upsertTodaySleep(userId, sleepData) {
 				)
 				VALUES (
 					@userId,
-					CAST(SYSUTCDATETIME() AS DATE),
+					CAST(GETDATE() AS DATE),
 					@sleepStart,
 					@sleepEnd,
 					@sleepHours,
@@ -89,7 +89,7 @@ async function upsertTodaySleep(userId, sleepData) {
 				updated_at AS updatedAt
 			FROM SleepEntries
 			WHERE user_id = @userId
-			  AND sleep_date = CAST(SYSUTCDATETIME() AS DATE)
+			  AND sleep_date = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0];

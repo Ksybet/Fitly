@@ -19,7 +19,7 @@ async function getTodayMood(userId) {
 				updated_at AS updatedAt
 			FROM MoodEntries
 			WHERE user_id = @userId
-			  AND mood_date = CAST(SYSUTCDATETIME() AS DATE)
+			  AND mood_date = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0] || null;
@@ -40,7 +40,7 @@ async function upsertTodayMood(userId, moodData) {
 			USING (
 				SELECT
 					@userId AS user_id,
-					CAST(SYSUTCDATETIME() AS DATE) AS mood_date
+					CAST(GETDATE() AS DATE) AS mood_date
 			) AS source
 			ON target.user_id = source.user_id
 			   AND target.mood_date = source.mood_date
@@ -51,7 +51,7 @@ async function upsertTodayMood(userId, moodData) {
 					mood_label = @moodLabel,
 					mood_emoji = @moodEmoji,
 					note = @note,
-					updated_at = SYSUTCDATETIME()
+					updated_at = GETDATE()
 
 			WHEN NOT MATCHED THEN
 				INSERT (
@@ -64,7 +64,7 @@ async function upsertTodayMood(userId, moodData) {
 				)
 				VALUES (
 					@userId,
-					CAST(SYSUTCDATETIME() AS DATE),
+					CAST(GETDATE() AS DATE),
 					@moodScore,
 					@moodLabel,
 					@moodEmoji,
@@ -83,7 +83,7 @@ async function upsertTodayMood(userId, moodData) {
 				updated_at AS updatedAt
 			FROM MoodEntries
 			WHERE user_id = @userId
-			  AND mood_date = CAST(SYSUTCDATETIME() AS DATE)
+			  AND mood_date = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0];

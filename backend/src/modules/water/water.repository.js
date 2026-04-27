@@ -11,7 +11,7 @@ async function getTodayWater(userId) {
 				ISNULL(SUM(amount_ml), 0) AS totalMl
 			FROM WaterEntries
 			WHERE user_id = @userId
-			  AND CAST(recorded_at AS DATE) = CAST(SYSUTCDATETIME() AS DATE)
+			  AND CAST(recorded_at AS DATE) = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0];
@@ -41,7 +41,7 @@ async function resetTodayWater(userId) {
 		.query(`
 			DELETE FROM WaterEntries
 			WHERE user_id = @userId
-			  AND CAST(recorded_at AS DATE) = CAST(SYSUTCDATETIME() AS DATE)
+			  AND CAST(recorded_at AS DATE) = CAST(GETDATE() AS DATE)
 		`);
 
 	return getTodayWater(userId);

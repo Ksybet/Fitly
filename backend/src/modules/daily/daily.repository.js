@@ -16,7 +16,7 @@ async function getToday(userId) {
 				updated_at AS updatedAt
 			FROM DailyTracking
 			WHERE user_id = @userId
-			  AND tracking_date = CAST(SYSUTCDATETIME() AS DATE)
+			  AND tracking_date = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0] || null;
@@ -34,7 +34,7 @@ async function upsertToday(userId, data) {
 			USING (
 				SELECT
 					@userId AS user_id,
-					CAST(SYSUTCDATETIME() AS DATE) AS tracking_date
+					CAST(GETDATE() AS DATE) AS tracking_date
 			) AS source
 			ON target.user_id = source.user_id
 			   AND target.tracking_date = source.tracking_date
@@ -43,11 +43,11 @@ async function upsertToday(userId, data) {
 				UPDATE SET
 					steps = @steps,
 					calories = @calories,
-					updated_at = SYSUTCDATETIME()
+					updated_at = GETDATE()
 
 			WHEN NOT MATCHED THEN
 				INSERT (user_id, tracking_date, steps, calories)
-				VALUES (@userId, CAST(SYSUTCDATETIME() AS DATE), @steps, @calories);
+				VALUES (@userId, CAST(GETDATE() AS DATE), @steps, @calories);
 
 			SELECT
 				id,
@@ -59,7 +59,7 @@ async function upsertToday(userId, data) {
 				updated_at AS updatedAt
 			FROM DailyTracking
 			WHERE user_id = @userId
-			  AND tracking_date = CAST(SYSUTCDATETIME() AS DATE)
+			  AND tracking_date = CAST(GETDATE() AS DATE)
 		`);
 
 	return result.recordset[0];
