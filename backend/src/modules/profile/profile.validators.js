@@ -8,6 +8,8 @@ function validateUpdateProfileRequest(req, res, next) {
 	try {
 		const { firstName, lastName, birthDate, gender, heightCm, weightKg } =
 			req.body;
+		const { firstName, birthDate, gender, weightKg, heightCm } = req.body;
+
 
 		if (firstName !== undefined) {
 			if (typeof firstName !== 'string') {
@@ -16,16 +18,6 @@ function validateUpdateProfileRequest(req, res, next) {
 
 			if (firstName.trim().length > 50) {
 				throw new ApiError(400, 'firstName must be at most 50 characters');
-			}
-		}
-
-		if (lastName !== undefined) {
-			if (typeof lastName !== 'string') {
-				throw new ApiError(400, 'lastName must be a string');
-			}
-
-			if (lastName.trim().length > 50) {
-				throw new ApiError(400, 'lastName must be at most 50 characters');
 			}
 		}
 
@@ -70,6 +62,16 @@ function validateUpdateProfileRequest(req, res, next) {
 
 			if (weightKg <= 0 || weightKg > 500) {
 				throw new ApiError(400, 'weightKg must be between 1 and 500');
+			}
+		}
+
+		if (heightCm !== undefined && heightCm !== null) {
+			if (typeof heightCm !== 'number' || Number.isNaN(heightCm)) {
+				throw new ApiError(400, 'heightCm must be a number');
+			}
+
+			if (heightCm <= 0 || heightCm > 300) {
+				throw new ApiError(400, 'heightCm must be between 1 and 300');
 			}
 		}
 

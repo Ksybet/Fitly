@@ -156,9 +156,11 @@ export default function HomeScreen() {
 	const { colors, isDark } = useContext(ThemeContext);
 
 	const [profileData, setProfileData] = useState<{
+		firstName: string;
 		weightKg: number | null;
 		heightCm: number | null;
 	}>({
+		firstName: '',
 		weightKg: null,
 		heightCm: null,
 	});
@@ -191,7 +193,12 @@ export default function HomeScreen() {
 	const [quickEditValue, setQuickEditValue] = useState('');
 	const [isSavingQuickEdit, setIsSavingQuickEdit] = useState(false);
 
-	const userName = user?.firstName || user?.name || user?.email?.split('@')[0];
+	const userName =
+		profileData.firstName ||
+		user?.firstName ||
+		user?.name ||
+		user?.email?.split('@')[0] ||
+		'пользователь';
 
 	const currentWeight = Number(profileData.weightKg ?? 0);
 	const hasWeight = currentWeight > 0;
@@ -224,6 +231,7 @@ export default function HomeScreen() {
 			]);
 
 			setProfileData({
+				firstName: profile?.firstName ?? '',
 				weightKg: profile?.weightKg ?? null,
 				heightCm: profile?.heightCm ?? null,
 			});
@@ -478,20 +486,6 @@ export default function HomeScreen() {
 				<View style={styles.header}>
 					<View style={styles.brandRow}>
 						<Text style={[styles.logo, { color: colors.primary }]}>Fitly</Text>
-
-						<TouchableOpacity
-							style={[
-								styles.headerIcon,
-								{ backgroundColor: isDark ? colors.cardSecondary : '#F1F1F1' },
-							]}
-							activeOpacity={0.8}
-						>
-							<Ionicons
-								name='notifications-outline'
-								size={22}
-								color={colors.textMuted}
-							/>
-						</TouchableOpacity>
 					</View>
 				</View>
 

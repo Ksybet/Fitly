@@ -14,11 +14,11 @@ async function getProfile(userId) {
 		profile = await createProfile({
 			userId,
 			firstName: '',
-			lastName: '',
 			birthDate: null,
 			gender: null,
 			heightCm: null,
 			weightKg: null,
+			heightCm: null,
 			updatedAt: new Date().toISOString(),
 		});
 	}
@@ -35,11 +35,6 @@ async function updateProfile(userId, data) {
 				? data.firstName.trim()
 				: existingProfile.firstName,
 
-		lastName:
-			data.lastName !== undefined
-				? data.lastName.trim()
-				: existingProfile.lastName,
-
 		birthDate:
 			data.birthDate !== undefined ? data.birthDate : existingProfile.birthDate,
 
@@ -51,12 +46,13 @@ async function updateProfile(userId, data) {
 		weightKg:
 			data.weightKg !== undefined ? data.weightKg : existingProfile.weightKg,
 
+		heightCm:
+			data.heightCm !== undefined ? data.heightCm : existingProfile.heightCm,
+
 		updatedAt: new Date().toISOString(),
 	};
 
-	const updatedProfile = await updateProfileByUserId(userId, updateData);
-
-	return updatedProfile;
+	return await updateProfileByUserId(userId, updateData);
 }
 
 async function deleteAccount(userId, password) {
