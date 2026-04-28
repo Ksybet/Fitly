@@ -1,6 +1,6 @@
 [ai]
-provider = "gemini"
-model = "gemini-2.5-flash"
+provider = "open-router"
+model = "qwen/qwen3-coder:free"
 max_tokens = 8192
 temperature = 0.2
 
