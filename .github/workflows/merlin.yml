@@ -14,14 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/arunachalamkalimuthu/merlin-ai-code-review:latest
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
       - name: Run Merlin Review
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENAI_BASE_URL: https://openrouter.ai/api/v1
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
