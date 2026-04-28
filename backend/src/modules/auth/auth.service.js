@@ -54,15 +54,12 @@ async function registerUser({ email, password, appVersion }) {
 
 	const passwordHash = await bcrypt.hash(password, 10);
 
-	const newUser = {
-		id: Date.now().toString(),
+	const newUser = await createUser({
 		email,
 		passwordHash,
 		role: 'user',
 		isActive: true,
-	};
-
-	await createUser(newUser);
+	});
 
 	const accessToken = generateAccessToken({
 		userId: newUser.id,
