@@ -8,7 +8,7 @@ import {
 	ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ThemeContext } from '../context/ThemeContext';
+import { ThemeContext } from '../../context/ThemeContext';
 
 const OPTIONS = [
 	{ label: 'Мужской', value: 'male', icon: 'male-outline' },

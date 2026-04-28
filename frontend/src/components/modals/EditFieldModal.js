@@ -10,7 +10,7 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 } from 'react-native';
-import { ThemeContext } from '../context/ThemeContext';
+import { ThemeContext } from '../../context/ThemeContext';
 
 const EditFieldModal = ({
 	visible,

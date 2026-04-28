@@ -11,6 +11,7 @@ type NavItemProps = {
 	active?: boolean;
 	onPress?: () => void;
 	textColor: string;
+	disabled?: boolean;
 };
 
 export default function BottomNav() {
@@ -65,17 +66,20 @@ export default function BottomNav() {
 				}
 				label='Аналитика'
 				textColor={colors.textMuted}
+				disabled
 			/>
 
 			<TouchableOpacity
 				style={[
 					styles.centerPlusButton,
+					styles.disabledItem,
 					{
 						backgroundColor: colors.primary,
 						shadowColor: colors.shadow,
 					},
 				]}
-				activeOpacity={0.88}
+				activeOpacity={1}
+				disabled
 			>
 				<Ionicons name='add' size={28} color='#FFFFFF' />
 			</TouchableOpacity>
@@ -111,12 +115,19 @@ export default function BottomNav() {
 	);
 }
 
-function NavItem({ icon, label, onPress, textColor }: NavItemProps) {
+function NavItem({
+	icon,
+	label,
+	onPress,
+	textColor,
+	disabled = false,
+}: NavItemProps) {
 	return (
 		<TouchableOpacity
-			style={styles.navItem}
-			onPress={onPress}
-			activeOpacity={0.8}
+			style={[styles.navItem, disabled && styles.disabledItem]}
+			onPress={disabled ? undefined : onPress}
+			activeOpacity={disabled ? 1 : 0.8}
+			disabled={disabled}
 		>
 			{icon}
 			<Text style={[styles.navLabel, { color: textColor }]} numberOfLines={1}>
@@ -158,5 +169,8 @@ const styles = StyleSheet.create({
 		shadowRadius: 8,
 		shadowOffset: { width: 0, height: 4 },
 		elevation: 6,
+	},
+	disabledItem: {
+		opacity: 0.4,
 	},
 });

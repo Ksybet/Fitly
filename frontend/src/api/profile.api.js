@@ -9,3 +9,11 @@ export const updateMyProfile = async profileData => {
 	const response = await httpClient.put('/profile', profileData);
 	return response.data.data;
 };
+
+export const deleteMyAccount = async (password) => {
+	const response = await httpClient.delete('/profile', {
+		data: { password },
+	});
+
+	return response.data;
+};

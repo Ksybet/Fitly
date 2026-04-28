@@ -100,7 +100,7 @@ export default function SettingsScreen() {
 				style={[
 					styles.header,
 					{
-						paddingTop: insets.top + 8,
+						paddingTop: insets.top + 20,
 						borderBottomColor: colors.border,
 						backgroundColor: colors.background,
 					},

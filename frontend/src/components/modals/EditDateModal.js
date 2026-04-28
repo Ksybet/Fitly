@@ -8,7 +8,7 @@ import {
 	ActivityIndicator,
 	ScrollView,
 } from 'react-native';
-import { ThemeContext } from '../context/ThemeContext';
+import { ThemeContext } from '../../context/ThemeContext';
 
 const months = [
 	'Январь',
