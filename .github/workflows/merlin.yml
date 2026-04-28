@@ -20,9 +20,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Force use config from main
+        run: |
+          git fetch origin main
+          git checkout origin/main -- merlin.toml || true
+
       - name: Run Merlin Review
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
