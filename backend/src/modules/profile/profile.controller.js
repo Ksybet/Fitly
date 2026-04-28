@@ -1,4 +1,4 @@
-const { getProfile, updateProfile } = require('./profile.service');
+const { getProfile, updateProfile, deleteAccount } = require('./profile.service');
 
 async function getMyProfile(req, res, next) {
 	try {
@@ -28,7 +28,23 @@ async function updateMyProfile(req, res, next) {
 	}
 }
 
+async function deleteMyAccount(req, res, next) {
+	try {
+		const userId = req.user.userId;
+
+		await deleteAccount(userId, req.body.password);
+
+		res.status(200).json({
+			success: true,
+			message: 'Account deleted',
+		});
+	} catch (error) {
+		next(error);
+	}
+}
+
 module.exports = {
 	getMyProfile,
 	updateMyProfile,
+	deleteMyAccount,
 };
