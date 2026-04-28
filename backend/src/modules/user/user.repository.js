@@ -66,7 +66,7 @@ async function findUserById(userId) {
 
 	const result = await pool
 		.request()
-		.input('userId', sql.UniqueIdentifier, userId)
+		.input('userId', sql.Int, Number(userId))
 		.query(`
 			SELECT TOP 1
 				id,
@@ -91,29 +91,29 @@ async function deleteUserById(userId) {
 
 	try {
 		const request = new sql.Request(transaction);
-		request.input('userId', sql.UniqueIdentifier, userId);
+		request.input('userId', sql.Int, Number(userId));
 
 		await request.query(`
 			IF OBJECT_ID('dbo.Profiles', 'U') IS NOT NULL
-				DELETE FROM Profiles WHERE userId = @userId;
+				DELETE FROM Profiles WHERE user_id = @userId;
 
 			IF OBJECT_ID('dbo.Goals', 'U') IS NOT NULL
-				DELETE FROM Goals WHERE userId = @userId;
+				DELETE FROM Goals WHERE user_id = @userId;
 
 			IF OBJECT_ID('dbo.WaterEntries', 'U') IS NOT NULL
-				DELETE FROM WaterEntries WHERE userId = @userId;
+				DELETE FROM WaterEntries WHERE user_id = @userId;
 
 			IF OBJECT_ID('dbo.SleepEntries', 'U') IS NOT NULL
-				DELETE FROM SleepEntries WHERE userId = @userId;
+				DELETE FROM SleepEntries WHERE user_id = @userId;
 
 			IF OBJECT_ID('dbo.MoodEntries', 'U') IS NOT NULL
-				DELETE FROM MoodEntries WHERE userId = @userId;
+				DELETE FROM MoodEntries WHERE user_id = @userId;
 
 			IF OBJECT_ID('dbo.Favorites', 'U') IS NOT NULL
-				DELETE FROM Favorites WHERE userId = @userId;
+				DELETE FROM Favorites WHERE user_id = @userId;
 
 			IF OBJECT_ID('dbo.DailyEntries', 'U') IS NOT NULL
-				DELETE FROM DailyEntries WHERE userId = @userId;
+				DELETE FROM DailyEntries WHERE user_id = @userId;
 
 			DELETE FROM Users WHERE id = @userId;
 		`);

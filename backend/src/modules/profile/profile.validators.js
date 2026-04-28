@@ -6,8 +6,6 @@ function validateGetProfileRequest(req, res, next) {
 
 function validateUpdateProfileRequest(req, res, next) {
 	try {
-		const { firstName, lastName, birthDate, gender, heightCm, weightKg } =
-			req.body;
 		const { firstName, birthDate, gender, weightKg, heightCm } = req.body;
 
 
