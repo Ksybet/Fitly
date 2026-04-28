@@ -1,8 +1,9 @@
-require('./config/db');
-
 const app = require('./app');
 const env = require('./config/env');
 
-app.listen(env.port, env.host, () => {
-	console.log(`Fitly backend started on http://${env.host}:${env.port}`);
+const PORT = env.PORT || process.env.PORT || 3000;
+const HOST = env.HOST || process.env.HOST || '0.0.0.0';
+
+app.listen(PORT, HOST, () => {
+	console.log(`🚀 Сервер запущен на ${HOST}:${PORT}`);
 });

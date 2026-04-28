@@ -4,23 +4,21 @@ const { ApiError } = require('../../utils/api-error');
 const { generateAccessToken } = require('../../utils/token');
 
 async function loginUser({ login, password, appVersion }) {
+	if (!login || !password || !appVersion) {
+		throw new ApiError(400, 'Поля login, password и appVersion обязательны');
+	}
+
 	const user = await findUserByEmail(login);
 
 	if (!user) {
 		throw new ApiError(401, 'Invalid credentials');
 	}
 
-	if (!user.is_active) {
+	if (!user.isActive) {
 		throw new ApiError(403, 'User account is inactive');
 	}
 
-	let isPasswordValid = false;
-
-	if (user.password_hash) {
-		isPasswordValid = await bcrypt.compare(password, user.password_hash);
-	} else {
-		isPasswordValid = password === user.password;
-	}
+	const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
 	if (!isPasswordValid) {
 		throw new ApiError(401, 'Invalid credentials');
@@ -44,21 +42,27 @@ async function loginUser({ login, password, appVersion }) {
 }
 
 async function registerUser({ email, password, appVersion }) {
+	if (!email || !password || !appVersion) {
+		throw new ApiError(400, 'Поля email, password и appVersion обязательны');
+	}
+
 	const existingUser = await findUserByEmail(email);
 
 	if (existingUser) {
 		throw new ApiError(409, 'User already exists');
 	}
 
-	const password_hash = await bcrypt.hash(password, 10);
+	const passwordHash = await bcrypt.hash(password, 10);
 
-	const newUser = await createUser({
+	const newUser = {
+		id: Date.now().toString(),
 		email,
-		password_hash,
+		passwordHash,
 		role: 'user',
-	});
+		isActive: true,
+	};
 
-
+	await createUser(newUser);
 
 	const accessToken = generateAccessToken({
 		userId: newUser.id,
