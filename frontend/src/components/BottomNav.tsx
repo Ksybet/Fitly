@@ -24,6 +24,7 @@ export default function BottomNav() {
 	const isMood = pathname === '/mood';
 	const isSleep = pathname === '/sleep';
 	const isFavorites = pathname === '/favorites';
+	const isWorkouts = pathname === '/workouts';
 
 	const isMoreSection =
 		isProfile || isGoals || isMood || isSleep || isFavorites;
@@ -84,11 +85,13 @@ export default function BottomNav() {
 					<MaterialCommunityIcons
 						name='dumbbell'
 						size={20}
-						color={colors.textMuted}
+						color={isWorkouts ? colors.primary : colors.textMuted}
 					/>
 				}
 				label='Тренировки'
-				textColor={colors.textMuted}
+				active={isWorkouts}
+				textColor={isWorkouts ? colors.primary : colors.textMuted}
+				onPress={() => router.replace('/workouts')}
 			/>
 
 			<NavItem
