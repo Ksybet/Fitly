@@ -1,0 +1,20 @@
+[ai]
+provider = "gemini"
+model = "gemini-2.5-flash"
+max_tokens = 8192
+temperature = 0.2
+
+[review]
+focus = ["bugs", "security", "style", "performance"]
+max_comments = 30
+reflect = true
+
+[agent]
+max_iterations = 10
+default_channel = "cli"
+
+[rag]
+enabled = true
+store = "local"
+index_extensions = [".ts", ".js", ".html", ".css", ".md"]
+local_path = "merlin-rag.jsonl"
