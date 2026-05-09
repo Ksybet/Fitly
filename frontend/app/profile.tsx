@@ -202,7 +202,7 @@ export default function ProfileScreen() {
 							<Ionicons name='notifications' size={20} color={colors.warning} />
 						}
 						label='Напоминания'
-						disabled
+						onPress={() => router.push('/reminders')}
 					/>
 
 					<StaticRow
