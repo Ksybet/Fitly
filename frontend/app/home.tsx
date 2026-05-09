@@ -30,6 +30,7 @@ type ActionButtonProps = {
 	icon: React.ReactNode;
 	label: string;
 	onPress?: () => void;
+	disabled?: boolean;
 };
 
 type GoalsState = {
@@ -156,9 +157,11 @@ export default function HomeScreen() {
 	const { colors, isDark } = useContext(ThemeContext);
 
 	const [profileData, setProfileData] = useState<{
+		firstName: string;
 		weightKg: number | null;
 		heightCm: number | null;
 	}>({
+		firstName: '',
 		weightKg: null,
 		heightCm: null,
 	});
@@ -191,7 +194,12 @@ export default function HomeScreen() {
 	const [quickEditValue, setQuickEditValue] = useState('');
 	const [isSavingQuickEdit, setIsSavingQuickEdit] = useState(false);
 
-	const userName = user?.firstName || user?.name || user?.email?.split('@')[0];
+	const userName =
+		profileData.firstName ||
+		user?.firstName ||
+		user?.name ||
+		user?.email?.split('@')[0] ||
+		'пользователь';
 
 	const currentWeight = Number(profileData.weightKg ?? 0);
 	const hasWeight = currentWeight > 0;
@@ -224,6 +232,7 @@ export default function HomeScreen() {
 			]);
 
 			setProfileData({
+				firstName: profile?.firstName ?? '',
 				weightKg: profile?.weightKg ?? null,
 				heightCm: profile?.heightCm ?? null,
 			});
@@ -478,20 +487,6 @@ export default function HomeScreen() {
 				<View style={styles.header}>
 					<View style={styles.brandRow}>
 						<Text style={[styles.logo, { color: colors.primary }]}>Fitly</Text>
-
-						<TouchableOpacity
-							style={[
-								styles.headerIcon,
-								{ backgroundColor: isDark ? colors.cardSecondary : '#F1F1F1' },
-							]}
-							activeOpacity={0.8}
-						>
-							<Ionicons
-								name='notifications-outline'
-								size={22}
-								color={colors.textMuted}
-							/>
-						</TouchableOpacity>
 					</View>
 				</View>
 
@@ -683,11 +678,13 @@ export default function HomeScreen() {
 							/>
 						}
 						label='Питание'
+						disabled
 					/>
 
 					<ActionButton
 						icon={<Ionicons name='heart' size={20} color={colors.danger} />}
 						label='Состояние'
+						disabled
 					/>
 				</View>
 
@@ -1046,7 +1043,12 @@ export default function HomeScreen() {
 	);
 }
 
-function ActionButton({ icon, label, onPress }: ActionButtonProps) {
+function ActionButton({
+	icon,
+	label,
+	onPress,
+	disabled = false,
+}: ActionButtonProps) {
 	const { colors, isDark } = useContext(ThemeContext);
 
 	return (
@@ -1054,9 +1056,11 @@ function ActionButton({ icon, label, onPress }: ActionButtonProps) {
 			style={[
 				styles.actionButton,
 				{ backgroundColor: colors.card, shadowColor: colors.shadow },
+				disabled && styles.disabledItem,
 			]}
-			onPress={onPress}
-			activeOpacity={0.82}
+			onPress={disabled ? undefined : onPress}
+			activeOpacity={disabled ? 1 : 0.82}
+			disabled={disabled}
 		>
 			<View style={styles.actionIcon}>{icon}</View>
 			<Text
@@ -1424,5 +1428,8 @@ const styles = StyleSheet.create({
 		fontSize: 15,
 		fontWeight: '700',
 		color: '#FFFFFF',
+	},
+	disabledItem: {
+		opacity: 0.4,
 	},
 });

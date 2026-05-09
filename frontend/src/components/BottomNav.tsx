@@ -11,6 +11,7 @@ type NavItemProps = {
 	active?: boolean;
 	onPress?: () => void;
 	textColor: string;
+	disabled?: boolean;
 };
 
 export default function BottomNav() {
@@ -24,6 +25,7 @@ export default function BottomNav() {
 	const isMood = pathname === '/mood';
 	const isSleep = pathname === '/sleep';
 	const isFavorites = pathname === '/favorites';
+	const isWorkouts = pathname === '/workouts';
 
 	const isMoreSection =
 		isProfile || isGoals || isMood || isSleep || isFavorites;
@@ -64,17 +66,20 @@ export default function BottomNav() {
 				}
 				label='Аналитика'
 				textColor={colors.textMuted}
+				disabled
 			/>
 
 			<TouchableOpacity
 				style={[
 					styles.centerPlusButton,
+					styles.disabledItem,
 					{
 						backgroundColor: colors.primary,
 						shadowColor: colors.shadow,
 					},
 				]}
-				activeOpacity={0.88}
+				activeOpacity={1}
+				disabled
 			>
 				<Ionicons name='add' size={28} color='#FFFFFF' />
 			</TouchableOpacity>
@@ -84,11 +89,13 @@ export default function BottomNav() {
 					<MaterialCommunityIcons
 						name='dumbbell'
 						size={20}
-						color={colors.textMuted}
+						color={isWorkouts ? colors.primary : colors.textMuted}
 					/>
 				}
 				label='Тренировки'
-				textColor={colors.textMuted}
+				active={isWorkouts}
+				textColor={isWorkouts ? colors.primary : colors.textMuted}
+				onPress={() => router.replace('/workouts')}
 			/>
 
 			<NavItem
@@ -108,12 +115,19 @@ export default function BottomNav() {
 	);
 }
 
-function NavItem({ icon, label, onPress, textColor }: NavItemProps) {
+function NavItem({
+	icon,
+	label,
+	onPress,
+	textColor,
+	disabled = false,
+}: NavItemProps) {
 	return (
 		<TouchableOpacity
-			style={styles.navItem}
-			onPress={onPress}
-			activeOpacity={0.8}
+			style={[styles.navItem, disabled && styles.disabledItem]}
+			onPress={disabled ? undefined : onPress}
+			activeOpacity={disabled ? 1 : 0.8}
+			disabled={disabled}
 		>
 			{icon}
 			<Text style={[styles.navLabel, { color: textColor }]} numberOfLines={1}>
@@ -155,5 +169,8 @@ const styles = StyleSheet.create({
 		shadowRadius: 8,
 		shadowOffset: { width: 0, height: 4 },
 		elevation: 6,
+	},
+	disabledItem: {
+		opacity: 0.4,
 	},
 });

@@ -8,6 +8,7 @@ function validateUpdateProfileRequest(req, res, next) {
 	try {
 		const { firstName, birthDate, gender, weightKg, heightCm } = req.body;
 
+
 		if (firstName !== undefined) {
 			if (typeof firstName !== 'string') {
 				throw new ApiError(400, 'firstName must be a string');
@@ -39,6 +40,16 @@ function validateUpdateProfileRequest(req, res, next) {
 
 			if (!allowedGenders.includes(gender)) {
 				throw new ApiError(400, 'gender must be one of: male, female, other');
+			}
+		}
+
+		if (heightCm !== undefined && heightCm !== null) {
+			if (typeof heightCm !== 'number' || Number.isNaN(heightCm)) {
+				throw new ApiError(400, 'heightCm must be a number');
+			}
+
+			if (heightCm <= 0 || heightCm > 300) {
+				throw new ApiError(400, 'heightCm must be between 1 and 300');
 			}
 		}
 
