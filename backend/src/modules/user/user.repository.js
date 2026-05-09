@@ -112,8 +112,8 @@ async function deleteUserById(userId) {
 			IF OBJECT_ID('dbo.Favorites', 'U') IS NOT NULL
 				DELETE FROM Favorites WHERE user_id = @userId;
 
-			IF OBJECT_ID('dbo.DailyEntries', 'U') IS NOT NULL
-				DELETE FROM DailyEntries WHERE user_id = @userId;
+			IF OBJECT_ID('dbo.DailyTracking', 'U') IS NOT NULL
+				DELETE FROM DailyTracking WHERE user_id = @userId;
 
 			DELETE FROM Users WHERE id = @userId;
 		`);
