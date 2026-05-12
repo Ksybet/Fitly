@@ -77,18 +77,21 @@ export const AuthProvider = ({ children }: Props) => {
 
 				try {
 					const response = await httpClient.get('/auth/me');
+
 					setToken(storedToken);
 					setUser(response?.data?.data?.user || null);
 				} catch (e: any) {
+					console.log('SESSION ERROR:', e?.message);
+					console.log('SESSION RESPONSE:', e?.response?.data);
+
 					if (e?.response?.status === 401) {
 						await clearSession();
 					} else {
-						console.log('Ошибка проверки сессии', e);
 						await clearSession();
 					}
 				}
-			} catch (e) {
-				console.log('Ошибка загрузки сессии', e);
+			} catch (e: any) {
+				console.log('LOAD SESSION ERROR:', e?.message);
 				await clearSession();
 			} finally {
 				setIsLoading(false);
@@ -122,11 +125,15 @@ export const AuthProvider = ({ children }: Props) => {
 		setError('');
 
 		try {
+			console.log('LOGIN REQUEST START');
+
 			const response = await httpClient.post('/auth/login', {
 				login: loginId,
 				password,
 				appVersion: '1.0.0',
 			});
+
+			console.log('LOGIN RESPONSE:', response?.data);
 
 			if (response?.data?.data?.accessToken) {
 				const accessToken: string = response.data.data.accessToken;
@@ -138,14 +145,20 @@ export const AuthProvider = ({ children }: Props) => {
 
 				setToken(accessToken);
 				setUser(userData);
+
+				console.log('LOGIN SUCCESS');
 			} else {
 				setError('Некорректный ответ сервера');
 			}
 		} catch (e: any) {
+			console.log('LOGIN ERROR MESSAGE:', e?.message);
+			console.log('LOGIN ERROR RESPONSE:', e?.response?.data);
+			console.log('LOGIN ERROR STATUS:', e?.response?.status);
+
 			if (e?.response?.data?.message) {
 				setError(translateError(e.response.data.message));
 			} else {
-				setError('Произошла ошибка при соединении с сервером');
+				setError(`Ошибка соединения: ${e?.message || 'unknown error'}`);
 			}
 		} finally {
 			setIsLoading(false);
@@ -157,11 +170,15 @@ export const AuthProvider = ({ children }: Props) => {
 		setError('');
 
 		try {
+			console.log('REGISTER REQUEST START');
+
 			const response = await httpClient.post('/auth/register', {
 				email,
 				password,
 				appVersion: '1.0.0',
 			});
+
+			console.log('REGISTER RESPONSE:', response?.data);
 
 			if (response?.data?.data?.accessToken) {
 				const accessToken: string = response.data.data.accessToken;
@@ -173,14 +190,20 @@ export const AuthProvider = ({ children }: Props) => {
 
 				setToken(accessToken);
 				setUser(userData);
+
+				console.log('REGISTER SUCCESS');
 			} else {
 				setError('Некорректный ответ сервера при регистрации');
 			}
 		} catch (e: any) {
+			console.log('REGISTER ERROR MESSAGE:', e?.message);
+			console.log('REGISTER ERROR RESPONSE:', e?.response?.data);
+			console.log('REGISTER ERROR STATUS:', e?.response?.status);
+
 			if (e?.response?.data?.message) {
 				setError(translateError(e.response.data.message));
 			} else {
-				setError('Произошла ошибка при соединении с сервером');
+				setError(`Ошибка соединения: ${e?.message || 'unknown error'}`);
 			}
 		} finally {
 			setIsLoading(false);
@@ -191,8 +214,8 @@ export const AuthProvider = ({ children }: Props) => {
 		try {
 			await clearSession();
 			router.replace('/login');
-		} catch (e) {
-			console.log('Ошибка при выходе', e);
+		} catch (e: any) {
+			console.log('LOGOUT ERROR:', e?.message);
 		}
 	};
 
