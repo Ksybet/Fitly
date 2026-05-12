@@ -1,1 +1,1 @@
-export const API_BASE_URL = 'http://144.31.165.72/api/v1';
+export const API_BASE_URL = 'https://api.fitlyapp.ru/api/v1';
