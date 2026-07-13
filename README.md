@@ -93,10 +93,11 @@ Fitly — мобильное приложение для отслеживани�
 ## Backend
 - Node.js
 - Express
-- MS SQL Server
+- PostgreSQL
 - JWT (jsonwebtoken)
 - bcryptjs
-- mssql
+- node-postgres (`pg`)
+- node-pg-migrate
 
 ---
 
@@ -121,7 +122,7 @@ REST API
         ↓
 Server (Node.js + Express)
         ↓
-MS SQL Database
+PostgreSQL Database
 ```
 
 ---
@@ -175,8 +176,20 @@ Fitly/
 
 ```bash
 cd backend
+docker compose up -d
 npm install
+npm run migrate:up
 npm run dev
+```
+
+Скопируйте `backend/.env.example` в `backend/.env` и замените `JWT_SECRET` на длинное случайное значение. `DATABASE_URL` задаёт основную PostgreSQL-базу. Docker Compose поднимает один PostgreSQL-сервер и при первом запуске создаёт две отдельные базы: `fitly` для разработки и `fitly_test` для интеграционных тестов.
+
+Миграции применяются явно и хранятся в `backend/migrations`:
+
+```bash
+npm run migrate:up
+npm run migrate:down
+npm run migrate:create -- add-example-table
 ```
 
 ### Backend tests
@@ -184,6 +197,13 @@ npm run dev
 ```bash
 cd backend
 npm test
+```
+
+Интеграционные тесты с реальной PostgreSQL используют только `TEST_DATABASE_URL` и отказываются работать с базой, имя которой не заканчивается на `_test`:
+
+```bash
+npm run test:integration
+npm run test:all
 ```
 
 Watch mode:
@@ -197,8 +217,6 @@ Coverage:
 ```bash
 npm run test:coverage
 ```
-
-Copy `backend/.env.example` to `backend/.env` and set `JWT_SECRET` to a long random value before starting the backend. The MS SQL variables `DB_USER`, `DB_PASSWORD`, `DB_SERVER`, and `DB_NAME` are also required to connect to the current database.
 
 ---
 
