@@ -1,25 +1,41 @@
 const goalsRepository = require('./goals.repository');
+const { ApiError } = require('../../utils/api-error');
+const { ensureValidUserId } = require('../../utils/validation');
 
 async function getGoals(userId) {
-	return goalsRepository.getGoalsByUserId(userId);
+	return goalsRepository.getGoalsByUserId(ensureValidUserId(userId));
 }
 
 async function updateGoals(userId, goals) {
 	if (!Array.isArray(goals)) {
-		const error = new Error('Goals must be an array');
-		error.statusCode = 400;
-		throw error;
+		throw new ApiError(400, 'Goals must be an array');
 	}
 
-	for (const goal of goals) {
-		if (!goal.goalType || !goal.title) {
-			const error = new Error('Each goal must have goalType and title');
-			error.statusCode = 400;
-			throw error;
+	const normalizedGoals = goals.map(goal => {
+		if (!goal || typeof goal !== 'object' || Array.isArray(goal)) {
+			throw new ApiError(400, 'Each goal must be an object');
 		}
-	}
 
-	return goalsRepository.replaceGoals(userId, goals);
+		const goalType = typeof goal.goalType === 'string' ? goal.goalType.trim() : '';
+		const title = typeof goal.title === 'string' ? goal.title.trim() : '';
+
+		if (!goalType || !title) {
+			throw new ApiError(400, 'Each goal must have goalType and title');
+		}
+
+		let targetValue = goal.targetValue;
+		if (targetValue === '') targetValue = null;
+		if (targetValue !== undefined && targetValue !== null) {
+			targetValue = Number(targetValue);
+			if (!Number.isFinite(targetValue)) {
+				throw new ApiError(400, 'Goal targetValue must be a finite number');
+			}
+		}
+
+		return { ...goal, goalType, title, targetValue };
+	});
+
+	return goalsRepository.replaceGoals(ensureValidUserId(userId), normalizedGoals);
 }
 
 module.exports = {

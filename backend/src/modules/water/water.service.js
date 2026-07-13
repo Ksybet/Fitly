@@ -1,21 +1,22 @@
 const waterRepository = require('./water.repository');
+const {
+	ensureValidUserId,
+	normalizeRequiredPositiveInt,
+} = require('../../utils/validation');
 
 async function getTodayWater(userId) {
-	return waterRepository.getTodayWater(userId);
+	return waterRepository.getTodayWater(ensureValidUserId(userId));
 }
 
 async function addWater(userId, amountMl) {
-	if (!amountMl || Number(amountMl) <= 0) {
-		const error = new Error('Amount must be greater than zero');
-		error.statusCode = 400;
-		throw error;
-	}
-
-	return waterRepository.addWater(userId, Number(amountMl));
+	return waterRepository.addWater(
+		ensureValidUserId(userId),
+		normalizeRequiredPositiveInt(amountMl, 'Amount'),
+	);
 }
 
 async function resetTodayWater(userId) {
-	return waterRepository.resetTodayWater(userId);
+	return waterRepository.resetTodayWater(ensureValidUserId(userId));
 }
 
 module.exports = {

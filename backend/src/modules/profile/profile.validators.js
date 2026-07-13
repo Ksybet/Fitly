@@ -9,7 +9,7 @@ function validateUpdateProfileRequest(req, res, next) {
 		const { firstName, birthDate, gender, weightKg, heightCm } = req.body;
 
 
-		if (firstName !== undefined) {
+		if (firstName !== undefined && firstName !== null) {
 			if (typeof firstName !== 'string') {
 				throw new ApiError(400, 'firstName must be a string');
 			}
@@ -44,7 +44,7 @@ function validateUpdateProfileRequest(req, res, next) {
 		}
 
 		if (heightCm !== undefined && heightCm !== null) {
-			if (typeof heightCm !== 'number' || Number.isNaN(heightCm)) {
+			if (typeof heightCm !== 'number' || !Number.isFinite(heightCm)) {
 				throw new ApiError(400, 'heightCm must be a number');
 			}
 
@@ -54,22 +54,12 @@ function validateUpdateProfileRequest(req, res, next) {
 		}
 
 		if (weightKg !== undefined && weightKg !== null) {
-			if (typeof weightKg !== 'number' || Number.isNaN(weightKg)) {
+			if (typeof weightKg !== 'number' || !Number.isFinite(weightKg)) {
 				throw new ApiError(400, 'weightKg must be a number');
 			}
 
 			if (weightKg <= 0 || weightKg > 500) {
 				throw new ApiError(400, 'weightKg must be between 1 and 500');
-			}
-		}
-
-		if (heightCm !== undefined && heightCm !== null) {
-			if (typeof heightCm !== 'number' || Number.isNaN(heightCm)) {
-				throw new ApiError(400, 'heightCm must be a number');
-			}
-
-			if (heightCm <= 0 || heightCm > 300) {
-				throw new ApiError(400, 'heightCm must be between 1 and 300');
 			}
 		}
 

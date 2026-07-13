@@ -179,6 +179,27 @@ npm install
 npm run dev
 ```
 
+### Backend tests
+
+```bash
+cd backend
+npm test
+```
+
+Watch mode:
+
+```bash
+npm run test:watch
+```
+
+Coverage:
+
+```bash
+npm run test:coverage
+```
+
+Copy `backend/.env.example` to `backend/.env` and set `JWT_SECRET` to a long random value before starting the backend. The MS SQL variables `DB_USER`, `DB_PASSWORD`, `DB_SERVER`, and `DB_NAME` are also required to connect to the current database.
+
 ---
 
 ## Frontend
