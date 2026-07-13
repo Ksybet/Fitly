@@ -34,6 +34,14 @@ const dailyService = require('../../src/modules/daily/daily.service');
 describe('goals service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
+	test('gets goals with a normalized user id', async () => {
+		const goals = [{ id: 1, title: 'Walk' }];
+		goalsRepository.getGoalsByUserId.mockResolvedValueOnce(goals);
+
+		await expect(goalsService.getGoals('7')).resolves.toBe(goals);
+		expect(goalsRepository.getGoalsByUserId).toHaveBeenCalledWith(7);
+	});
+
 	test('rejects malformed goals and trims required values', async () => {
 		await expect(goalsService.updateGoals(1, {})).rejects.toMatchObject({ status: 400 });
 		await expect(goalsService.updateGoals(1, [{ goalType: 'steps', title: ' ' }]))
@@ -55,6 +63,16 @@ describe('goals service', () => {
 describe('water service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
+	test('gets and resets water with a normalized user id', async () => {
+		waterRepository.getTodayWater.mockResolvedValueOnce({ totalMl: 250 });
+		waterRepository.resetTodayWater.mockResolvedValueOnce({ totalMl: 0 });
+
+		await expect(waterService.getTodayWater('7')).resolves.toEqual({ totalMl: 250 });
+		await expect(waterService.resetTodayWater('7')).resolves.toEqual({ totalMl: 0 });
+		expect(waterRepository.getTodayWater).toHaveBeenCalledWith(7);
+		expect(waterRepository.resetTodayWater).toHaveBeenCalledWith(7);
+	});
+
 	test.each([-1, 0, '', 'not-a-number', Infinity])('rejects invalid water amount %p', async amount => {
 		await expect(waterService.addWater(1, amount)).rejects.toMatchObject({ status: 400 });
 	});
@@ -73,6 +91,14 @@ describe('water service', () => {
 
 describe('sleep service', () => {
 	beforeEach(() => jest.clearAllMocks());
+
+	test('gets sleep with a normalized user id', async () => {
+		const sleep = { sleepHours: 8, sleepMinutes: 15 };
+		sleepRepository.getTodaySleep.mockResolvedValueOnce(sleep);
+
+		await expect(sleepService.getTodaySleep('7')).resolves.toBe(sleep);
+		expect(sleepRepository.getTodaySleep).toHaveBeenCalledWith(7);
+	});
 
 	test.each([
 		[{ sleepEnd: '08:00', sleepHours: 8, sleepMinutes: 0 }],
@@ -98,6 +124,14 @@ describe('sleep service', () => {
 describe('mood service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
+	test('gets mood with a normalized user id', async () => {
+		const mood = { moodScore: 8, moodLabel: 'Calm' };
+		moodRepository.getTodayMood.mockResolvedValueOnce(mood);
+
+		await expect(moodService.getTodayMood('7')).resolves.toBe(mood);
+		expect(moodRepository.getTodayMood).toHaveBeenCalledWith(7);
+	});
+
 	test.each([0, 11, 'bad'])('rejects an out-of-range mood score %p', async moodScore => {
 		await expect(moodService.updateTodayMood(1, {
 			moodScore, moodLabel: 'Happy', moodEmoji: '🙂',
@@ -121,6 +155,14 @@ describe('mood service', () => {
 
 describe('daily service', () => {
 	beforeEach(() => jest.clearAllMocks());
+
+	test('gets daily tracking with a normalized user id', async () => {
+		const daily = { steps: 4321, calories: 650 };
+		dailyRepository.getToday.mockResolvedValueOnce(daily);
+
+		await expect(dailyService.getToday('7')).resolves.toBe(daily);
+		expect(dailyRepository.getToday).toHaveBeenCalledWith(7);
+	});
 
 	test.each([
 		[{ steps: -1, calories: 0 }],
