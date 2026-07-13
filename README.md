@@ -156,7 +156,7 @@ Fitly/
 - JWT авторизация
 - Bearer token
 - Middleware проверка токена
-- HTTPS через Nginx + Certbot
+- Автоматический HTTPS через Caddy
 - Автоматическая очистка просроченной сессии
 
 ---
@@ -167,8 +167,8 @@ Fitly/
 - PostgreSQL 17
 - Одноразовый контейнер миграций
 - Backend API в production-контейнере
-- Nginx reverse proxy на host
-- HTTPS сертификат Let's Encrypt
+- Caddy reverse proxy в production Compose
+- Автоматические TLS-сертификаты Let's Encrypt
 - Домен: `api.fitlyapp.ru`
 
 ---
@@ -221,13 +221,16 @@ docker compose --env-file .env -f compose.yaml -f compose.test.yaml down --volum
 docker compose --env-file .env -f compose.yaml -f compose.production.yaml up --build --detach --wait
 ```
 
-PostgreSQL не публикуется на host. API публикуется только как `127.0.0.1:${API_HOST_PORT}` для существующего Nginx из `deploy/fitly-api.conf`. Production-образ работает от непривилегированного пользователя, имеет read-only root filesystem и не содержит тестов, миграций или devDependencies.
+PostgreSQL и API не публикуются на host. Caddy слушает порты 80 и 443, ожидает healthy API, проксирует `api.fitlyapp.ru` во внутренний `api:3000`, передаёт стандартные `X-Forwarded-*` заголовки и автоматически получает TLS-сертификаты. Перед первым запуском направьте A/AAAA-записи домена на сервер и откройте входящие порты 80/443.
+
+Сертификаты и состояние Caddy сохраняются в volumes `caddy_data` и `caddy_config`. Production-образ API работает от непривилегированного пользователя, имеет read-only root filesystem и не содержит тестов, миграций или devDependencies.
 
 Посмотреть состояние и логи:
 
 ```bash
 docker compose --env-file .env -f compose.yaml -f compose.production.yaml ps --all
 docker compose --env-file .env -f compose.yaml -f compose.production.yaml logs --follow api
+docker compose --env-file .env -f compose.yaml -f compose.production.yaml logs --follow caddy
 ```
 
 Повторный `up` безопасен: уже применённые миграции пропускаются. Обычный `down` сохраняет PostgreSQL volume; не используйте `down --volumes` для production-стека без намерения удалить данные.

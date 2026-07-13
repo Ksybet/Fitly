@@ -1,0 +1,12 @@
+api.fitlyapp.ru {
+	encode zstd gzip
+
+	reverse_proxy api:3000 {
+		health_uri /health
+		health_interval 10s
+		health_timeout 5s
+
+		# Caddy sets X-Forwarded-For, X-Forwarded-Host and X-Forwarded-Proto by default.
+		header_up X-Real-IP {remote_host}
+	}
+}

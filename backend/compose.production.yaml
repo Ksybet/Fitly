@@ -10,8 +10,6 @@ services:
       target: production
     environment:
       NODE_ENV: production
-    ports:
-      - "127.0.0.1:${API_HOST_PORT:-3000}:${PORT:-3000}"
     read_only: true
     tmpfs:
       - /tmp
@@ -20,5 +18,27 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  caddy:
+    image: caddy:2.11.4-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
   fitly_postgres_production:
+  caddy_data:
+  caddy_config:
