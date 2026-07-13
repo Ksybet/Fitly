@@ -1,11 +1,18 @@
 jest.mock('../../src/config/db', () => ({
-	pool: {},
+	pool: { query: jest.fn() },
 }));
 
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const app = require('../../src/app');
+const { pool } = require('../../src/config/db');
 const { errorMiddleware } = require('../../src/middlewares/error.middleware');
+
+function createAuthorization() {
+	const token = jwt.sign({ userId: 1, role: 'user' }, process.env.JWT_SECRET);
+	return `Bearer ${token}`;
+}
 
 describe('HTTP application contracts', () => {
 	test('GET /health returns 200 without a database connection', async () => {
@@ -31,6 +38,30 @@ describe('HTTP application contracts', () => {
 			success: false,
 			message: 'Unauthorized',
 		});
+	});
+
+	test.each([
+		[{ firstName: 42 }, 'firstName must be a string'],
+		[{ birthDate: 42 }, 'birthDate must be a string'],
+		[{ birthDate: '02.01.2000' }, 'birthDate must be in YYYY-MM-DD format'],
+		[{ gender: 42 }, 'gender must be a string'],
+		[{ gender: 'unknown' }, 'gender must be one of: male, female, other'],
+		[{ heightCm: '170' }, 'heightCm must be a number'],
+		[{ heightCm: 0 }, 'heightCm must be between 1 and 300'],
+		[{ heightCm: 301 }, 'heightCm must be between 1 and 300'],
+		[{ weightKg: '60' }, 'weightKg must be a number'],
+		[{ weightKg: 0 }, 'weightKg must be between 1 and 500'],
+		[{ weightKg: 501 }, 'weightKg must be between 1 and 500'],
+	])('profile validation rejects %p without accessing the database', async (body, message) => {
+		pool.query.mockClear();
+
+		await request(app)
+			.put('/api/v1/profile')
+			.set('Authorization', createAuthorization())
+			.send(body)
+			.expect(400, { success: false, message });
+
+		expect(pool.query).not.toHaveBeenCalled();
 	});
 
 	test('an unexpected exception is safely handled as a 500', async () => {

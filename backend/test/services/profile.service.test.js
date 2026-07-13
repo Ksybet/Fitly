@@ -17,6 +17,15 @@ const { getProfile, updateProfile, deleteAccount } = require('../../src/modules/
 describe('profile service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
+	test.each([null, 'invalid', 42, []])('rejects an invalid profile body %p', async data => {
+		await expect(updateProfile(1, data)).rejects.toMatchObject({
+			status: 400,
+			message: 'Profile data is required',
+		});
+		expect(profileRepository.findProfileByUserId).not.toHaveBeenCalled();
+		expect(profileRepository.updateProfileByUserId).not.toHaveBeenCalled();
+	});
+
 	test('creates an empty profile only when one does not exist', async () => {
 		profileRepository.findProfileByUserId.mockResolvedValueOnce(null);
 		profileRepository.createProfile.mockResolvedValueOnce({ userId: 1, firstName: '' });
@@ -40,6 +49,25 @@ describe('profile service', () => {
 		expect(profileRepository.updateProfileByUserId).toHaveBeenCalledWith(1, expect.objectContaining({
 			firstName: 'Ada', heightCm: 170, weightKg: 60,
 		}));
+	});
+
+	test('rejects a non-string first name and accepts an explicit null', async () => {
+		profileRepository.findProfileByUserId.mockResolvedValue({
+			firstName: 'Old', birthDate: null, gender: null, heightCm: null, weightKg: null,
+		});
+
+		await expect(updateProfile(1, { firstName: 42 })).rejects.toMatchObject({
+			status: 400,
+			message: 'firstName must be a string',
+		});
+		expect(profileRepository.updateProfileByUserId).not.toHaveBeenCalled();
+
+		profileRepository.updateProfileByUserId.mockResolvedValueOnce({ firstName: null });
+		await expect(updateProfile(1, { firstName: null })).resolves.toEqual({ firstName: null });
+		expect(profileRepository.updateProfileByUserId).toHaveBeenCalledWith(
+			1,
+			expect.objectContaining({ firstName: null }),
+		);
 	});
 
 	test('requires a password and handles missing users, wrong passwords, and deletion', async () => {
