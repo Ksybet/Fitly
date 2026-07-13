@@ -1,22 +1,61 @@
+name: fitly
+
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: fitly
-      POSTGRES_PASSWORD: fitly
-      POSTGRES_DB: fitly
-      TZ: Europe/Moscow
-      PGTZ: Europe/Moscow
-    ports:
-      - "55432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      TZ: ${TZ:-Europe/Moscow}
+      PGTZ: ${TZ:-Europe/Moscow}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fitly -d fitly"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 10
-    volumes:
-      - fitly_postgres_data:/var/lib/postgresql/data
-      - ./.docker/001_create_test_database.sql:/docker-entrypoint-initdb.d/001_create_test_database.sql:ro
+      start_period: 10s
+    restart: unless-stopped
 
-volumes:
-  fitly_postgres_data:
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      target: production
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-3000}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3001}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch(`http://127.0.0.1:$${process.env.PORT}/health`)
+          .then(response => { if (!response.ok) process.exit(1); })
+          .catch(() => process.exit(1));
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s
