@@ -1,4 +1,5 @@
 backend/.env
+backend/.env.test
 .env
 backend/node_modules/
 backend/coverage/
