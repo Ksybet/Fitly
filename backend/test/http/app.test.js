@@ -1,6 +1,5 @@
 jest.mock('../../src/config/db', () => ({
-	sql: {},
-	poolPromise: Promise.resolve({}),
+	pool: {},
 }));
 
 const express = require('express');

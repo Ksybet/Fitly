@@ -18,6 +18,10 @@ if (!process.env.JWT_SECRET || !process.env.JWT_SECRET.trim()) {
 	throw new Error('JWT_SECRET environment variable is required');
 }
 
+if (!process.env.DATABASE_URL || !process.env.DATABASE_URL.trim()) {
+	throw new Error('DATABASE_URL environment variable is required');
+}
+
 module.exports = {
 	NODE_ENV: process.env.NODE_ENV || 'development',
 	HOST: process.env.HOST || '0.0.0.0',
@@ -25,8 +29,6 @@ module.exports = {
 	JWT_SECRET: process.env.JWT_SECRET,
 	JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '1h',
 	CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3001',
-	DB_USER: process.env.DB_USER,
-	DB_PASSWORD: process.env.DB_PASSWORD,
-	DB_SERVER: process.env.DB_SERVER,
-	DB_NAME: process.env.DB_NAME,
+	DATABASE_URL: process.env.DATABASE_URL,
+	TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
 };

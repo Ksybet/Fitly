@@ -8,6 +8,7 @@ describe('environment configuration', () => {
 
 	test('normalizes a valid port and uses the network-safe host default', () => {
 		process.env.JWT_SECRET = 'secret';
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
 		process.env.PORT = '4567';
 		delete process.env.HOST;
 		jest.resetModules();
@@ -18,6 +19,7 @@ describe('environment configuration', () => {
 	});
 
 	test('rejects a missing JWT secret and invalid port', () => {
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
 		process.env.JWT_SECRET = ' ';
 		jest.resetModules();
 		expect(() => require('../../src/config/env')).toThrow('JWT_SECRET environment variable is required');
@@ -26,5 +28,15 @@ describe('environment configuration', () => {
 		process.env.PORT = 'invalid';
 		jest.resetModules();
 		expect(() => require('../../src/config/env')).toThrow('PORT must be an integer between 1 and 65535');
+	});
+
+	test('rejects a missing database URL', () => {
+		process.env.JWT_SECRET = 'secret';
+		delete process.env.DATABASE_URL;
+		jest.resetModules();
+
+		expect(() => require('../../src/config/env')).toThrow(
+			'DATABASE_URL environment variable is required',
+		);
 	});
 });

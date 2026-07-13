@@ -1,75 +1,56 @@
-const { sql, poolPromise } = require('../../config/db');
+const { pool } = require('../../config/db');
+
+const favoriteColumns = `
+	id,
+	user_id AS "userId",
+	water,
+	weight,
+	height,
+	bmi,
+	created_at AS "createdAt",
+	updated_at AS "updatedAt"
+`;
 
 async function getFavorites(userId) {
-	const pool = await poolPromise;
+	await pool.query(
+		`INSERT INTO favorites (user_id)
+		 VALUES ($1)
+		 ON CONFLICT (user_id) DO NOTHING`,
+		[userId],
+	);
 
-	const result = await pool
-		.request()
-		.input('userId', sql.Int, userId)
-		.query(`
-			IF NOT EXISTS (SELECT 1 FROM Favorites WHERE user_id = @userId)
-			BEGIN
-				INSERT INTO Favorites (user_id)
-				VALUES (@userId)
-			END
+	const result = await pool.query(
+		`SELECT ${favoriteColumns}
+		 FROM favorites
+		 WHERE user_id = $1`,
+		[userId],
+	);
 
-			SELECT
-				id,
-				user_id AS userId,
-				CAST(water AS bit) AS water,
-				CAST(weight AS bit) AS weight,
-				CAST(height AS bit) AS height,
-				CAST(bmi AS bit) AS bmi,
-				created_at AS createdAt,
-				updated_at AS updatedAt
-			FROM Favorites
-			WHERE user_id = @userId
-		`);
-
-	return result.recordset[0];
+	return result.rows[0];
 }
 
 async function updateFavorites(userId, favorites) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`INSERT INTO favorites (user_id, water, weight, height, bmi)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (user_id)
+		 DO UPDATE SET
+			water = EXCLUDED.water,
+			weight = EXCLUDED.weight,
+			height = EXCLUDED.height,
+			bmi = EXCLUDED.bmi,
+			updated_at = CURRENT_TIMESTAMP
+		 RETURNING ${favoriteColumns}`,
+		[
+			userId,
+			Boolean(favorites.water),
+			Boolean(favorites.weight),
+			Boolean(favorites.height),
+			Boolean(favorites.bmi),
+		],
+	);
 
-	const result = await pool
-		.request()
-		.input('userId', sql.Int, userId)
-		.input('water', sql.Bit, Boolean(favorites.water))
-		.input('weight', sql.Bit, Boolean(favorites.weight))
-		.input('height', sql.Bit, Boolean(favorites.height))
-		.input('bmi', sql.Bit, Boolean(favorites.bmi))
-		.query(`
-			MERGE Favorites AS target
-			USING (SELECT @userId AS user_id) AS source
-			ON target.user_id = source.user_id
-
-			WHEN MATCHED THEN
-				UPDATE SET
-					water = @water,
-					weight = @weight,
-					height = @height,
-					bmi = @bmi,
-					updated_at = SYSUTCDATETIME()
-
-			WHEN NOT MATCHED THEN
-				INSERT (user_id, water, weight, height, bmi)
-				VALUES (@userId, @water, @weight, @height, @bmi);
-
-			SELECT
-				id,
-				user_id AS userId,
-				CAST(water AS bit) AS water,
-				CAST(weight AS bit) AS weight,
-				CAST(height AS bit) AS height,
-				CAST(bmi AS bit) AS bmi,
-				created_at AS createdAt,
-				updated_at AS updatedAt
-			FROM Favorites
-			WHERE user_id = @userId
-		`);
-
-	return result.recordset[0];
+	return result.rows[0];
 }
 
 module.exports = {

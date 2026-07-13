@@ -1,68 +1,41 @@
-const { sql, poolPromise } = require('../../config/db');
+const { pool } = require('../../config/db');
+
+const dailyColumns = `
+	id,
+	user_id AS "userId",
+	tracking_date AS "trackingDate",
+	steps,
+	calories,
+	created_at AS "createdAt",
+	updated_at AS "updatedAt"
+`;
 
 async function getToday(userId) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`SELECT ${dailyColumns}
+		 FROM daily_tracking
+		 WHERE user_id = $1
+		   AND tracking_date = CURRENT_DATE`,
+		[userId],
+	);
 
-	const result = await pool.request()
-		.input('userId', sql.Int, userId)
-		.query(`
-			SELECT
-				id,
-				user_id AS userId,
-				tracking_date AS trackingDate,
-				steps,
-				calories,
-				created_at AS createdAt,
-				updated_at AS updatedAt
-			FROM DailyTracking
-			WHERE user_id = @userId
-			  AND tracking_date = CAST(GETDATE() AS DATE)
-		`);
-
-	return result.recordset[0] || null;
+	return result.rows[0] || null;
 }
 
 async function upsertToday(userId, data) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`INSERT INTO daily_tracking (user_id, tracking_date, steps, calories)
+		 VALUES ($1, CURRENT_DATE, $2, $3)
+		 ON CONFLICT (user_id, tracking_date)
+		 DO UPDATE SET
+			steps = EXCLUDED.steps,
+			calories = EXCLUDED.calories,
+			updated_at = CURRENT_TIMESTAMP
+		 RETURNING ${dailyColumns}`,
+		[userId, data.steps ?? null, data.calories ?? null],
+	);
 
-	const result = await pool.request()
-		.input('userId', sql.Int, userId)
-		.input('steps', sql.Int, data.steps ?? null)
-		.input('calories', sql.Int, data.calories ?? null)
-		.query(`
-			MERGE DailyTracking AS target
-			USING (
-				SELECT
-					@userId AS user_id,
-					CAST(GETDATE() AS DATE) AS tracking_date
-			) AS source
-			ON target.user_id = source.user_id
-			   AND target.tracking_date = source.tracking_date
-
-			WHEN MATCHED THEN
-				UPDATE SET
-					steps = @steps,
-					calories = @calories,
-					updated_at = GETDATE()
-
-			WHEN NOT MATCHED THEN
-				INSERT (user_id, tracking_date, steps, calories)
-				VALUES (@userId, CAST(GETDATE() AS DATE), @steps, @calories);
-
-			SELECT
-				id,
-				user_id AS userId,
-				tracking_date AS trackingDate,
-				steps,
-				calories,
-				created_at AS createdAt,
-				updated_at AS updatedAt
-			FROM DailyTracking
-			WHERE user_id = @userId
-			  AND tracking_date = CAST(GETDATE() AS DATE)
-		`);
-
-	return result.recordset[0];
+	return result.rows[0];
 }
 
 module.exports = {
