@@ -1,0 +1,37 @@
+name: fitly-test
+
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: ${POSTGRES_TEST_DB:?POSTGRES_TEST_DB is required}
+    restart: "no"
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  migrate:
+    environment:
+      DATABASE_URL: ${TEST_DATABASE_URL:?TEST_DATABASE_URL is required}
+    command:
+      - sh
+      - -c
+      - npm run migrate:up && touch /tmp/migrations-complete && tail -f /dev/null
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/migrations-complete"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+
+  api:
+    build:
+      target: test
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: ${TEST_DATABASE_URL:?TEST_DATABASE_URL is required}
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:?TEST_DATABASE_URL is required}
+    command: ["npm", "run", "test:all"]
+    depends_on:
+      migrate:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: "no"
