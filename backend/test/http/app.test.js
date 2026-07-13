@@ -9,8 +9,12 @@ const app = require('../../src/app');
 const { pool } = require('../../src/config/db');
 const { errorMiddleware } = require('../../src/middlewares/error.middleware');
 
-function createAuthorization() {
-	const token = jwt.sign({ userId: 1, role: 'user' }, process.env.JWT_SECRET);
+function createAuthorization(
+	payload = { userId: 1, role: 'user' },
+	options = {},
+	secret = process.env.JWT_SECRET,
+) {
+	const token = jwt.sign(payload, secret, options);
 	return `Bearer ${token}`;
 }
 
@@ -38,6 +42,28 @@ describe('HTTP application contracts', () => {
 			success: false,
 			message: 'Unauthorized',
 		});
+	});
+
+	test.each([
+		['Bearer ', 'Unauthorized'],
+		['Bearer not-a-jwt', 'Invalid or expired token'],
+		[createAuthorization(undefined, { expiresIn: -1 }), 'Invalid or expired token'],
+		[createAuthorization(undefined, {}, 'different-secret'), 'Invalid or expired token'],
+	])('a protected route rejects an invalid authorization header', async (authorization, message) => {
+		await request(app)
+			.get('/api/v1/auth/me')
+			.set('Authorization', authorization)
+			.expect(401, { success: false, message });
+	});
+
+	test('a valid JWT exposes its payload on the authenticated route', async () => {
+		await request(app)
+			.get('/api/v1/auth/me')
+			.set('Authorization', createAuthorization({ userId: 7, role: 'admin' }))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.user).toMatchObject({ userId: 7, role: 'admin' });
+			});
 	});
 
 	test.each([
