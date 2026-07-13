@@ -11,6 +11,15 @@ async function updateFavorites(userId, favorites) {
 		throw new ApiError(400, 'Favorites data is required');
 	}
 
+	for (const field of ['water', 'weight', 'height', 'bmi']) {
+		if (
+			Object.prototype.hasOwnProperty.call(favorites, field) &&
+			typeof favorites[field] !== 'boolean'
+		) {
+			throw new ApiError(400, `${field} must be a boolean`);
+		}
+	}
+
 	return favoritesRepository.updateFavorites(ensureValidUserId(userId), {
 		water: favorites.water ?? true,
 		weight: favorites.weight ?? true,
