@@ -69,6 +69,40 @@ describe('HTTP application contracts', () => {
 			});
 	});
 
+	test.each([
+		[undefined, 401, 'Unauthorized'],
+		['Bearer not-a-jwt', 401, 'Invalid or expired token'],
+		[createAuthorization({ userId: 7, role: 'user' }), 403, 'Forbidden'],
+	])(
+		'the administrative namespace rejects unauthorized access',
+		async (authorization, status, message) => {
+			const adminRequest = request(app)
+				.get('/api/v1/admin/analytics/overview');
+
+			if (authorization) {
+				adminRequest.set('Authorization', authorization);
+			}
+
+			await adminRequest.expect(status, {
+				success: false,
+				message,
+			});
+		},
+	);
+
+	test('an administrator passes the namespace guard and reaches the global 404', async () => {
+		await request(app)
+			.get('/api/v1/admin/analytics/overview')
+			.set(
+				'Authorization',
+				createAuthorization({ userId: 7, role: 'admin' }),
+			)
+			.expect(404, {
+				success: false,
+				message: 'Route not found',
+			});
+	});
+
 	test('an administrator login audits proxy and device metadata', async () => {
 		const password = 'Strong!Admin123';
 		const passwordHash = await bcrypt.hash(password, 4);
