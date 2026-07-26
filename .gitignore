@@ -1,6 +1,37 @@
-backend/.env
-backend/.env.test
-.env
-backend/node_modules/
-backend/coverage/
+# Secrets and local environment configuration
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and generated test/build files
+**/node_modules/
+**/coverage/
+*.tsbuildinfo
+
+# Logs and runtime files
+*.log
+*.pid
+*.pid.lock
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Expo and mobile build artifacts
+frontend/.expo/
+frontend/.expo-shared/
+frontend/web-build/
+frontend/dist/
+*.apk
+*.aab
+*.ipa
+
+# Editor and OS-specific local files
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.DS_Store
+Thumbs.db
+
 AGENTS.md
