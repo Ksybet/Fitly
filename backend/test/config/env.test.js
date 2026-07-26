@@ -1,3 +1,5 @@
+jest.mock('dotenv', () => ({ config: jest.fn() }));
+
 describe('environment configuration', () => {
 	const originalEnv = { ...process.env };
 
@@ -16,6 +18,7 @@ describe('environment configuration', () => {
 		const env = require('../../src/config/env');
 		expect(env.PORT).toBe(4567);
 		expect(env.HOST).toBe('0.0.0.0');
+		expect(env.TRUST_PROXY_HOPS).toBe(1);
 	});
 
 	test('rejects a missing JWT secret and invalid port', () => {
@@ -37,6 +40,32 @@ describe('environment configuration', () => {
 
 		expect(() => require('../../src/config/env')).toThrow(
 			'DATABASE_URL environment variable is required',
+		);
+	});
+
+	test('exposes optional administrator bootstrap settings', () => {
+		process.env.JWT_SECRET = 'secret';
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
+		process.env.ADMIN_EMAIL = 'admin@example.com';
+		process.env.ADMIN_PASSWORD = 'Strong!Admin123';
+		jest.resetModules();
+
+		const env = require('../../src/config/env');
+		expect(env.ADMIN_EMAIL).toBe('admin@example.com');
+		expect(env.ADMIN_PASSWORD).toBe('Strong!Admin123');
+	});
+
+	test('validates trusted proxy hops', () => {
+		process.env.JWT_SECRET = 'secret';
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
+		process.env.TRUST_PROXY_HOPS = '0';
+		jest.resetModules();
+		expect(require('../../src/config/env').TRUST_PROXY_HOPS).toBe(0);
+
+		process.env.TRUST_PROXY_HOPS = 'invalid';
+		jest.resetModules();
+		expect(() => require('../../src/config/env')).toThrow(
+			'TRUST_PROXY_HOPS must be an integer between 0 and 10',
 		);
 	});
 });

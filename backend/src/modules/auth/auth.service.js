@@ -2,27 +2,58 @@ const bcrypt = require('bcryptjs');
 const { findUserByEmail, createUser } = require('../user/user.repository');
 const { ApiError } = require('../../utils/api-error');
 const { generateAccessToken } = require('../../utils/token');
+const {
+	recordAdminLoginAttempt,
+} = require('../admin/admin-login-audit.service');
 
-async function loginUser({ login, password, appVersion }) {
+async function recordRejectedAdminLogin(user, failureReason, requestMetadata) {
+	try {
+		await recordAdminLoginAttempt({
+			user,
+			succeeded: false,
+			failureReason,
+			...requestMetadata,
+		});
+	} catch {
+		console.error('Failed to persist rejected administrator login audit');
+	}
+}
+
+async function loginUser({
+	login,
+	password,
+	appVersion,
+	ipAddress,
+	device,
+}) {
 	if (!login || !password || !appVersion) {
 		throw new ApiError(400, 'Поля login, password и appVersion обязательны');
 	}
 
 	const user = await findUserByEmail(login);
+	const requestMetadata = { ipAddress, device, appVersion };
 
 	if (!user) {
 		throw new ApiError(401, 'Invalid credentials');
 	}
 
 	if (!user.isActive) {
+		await recordRejectedAdminLogin(user, 'inactive_account', requestMetadata);
 		throw new ApiError(403, 'User account is inactive');
 	}
 
 	const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
 	if (!isPasswordValid) {
+		await recordRejectedAdminLogin(user, 'invalid_password', requestMetadata);
 		throw new ApiError(401, 'Invalid credentials');
 	}
+
+	await recordAdminLoginAttempt({
+		user,
+		succeeded: true,
+		...requestMetadata,
+	});
 
 	const accessToken = generateAccessToken({
 		userId: user.id,

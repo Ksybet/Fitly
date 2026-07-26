@@ -14,6 +14,20 @@ function normalizePort(value) {
 	return port;
 }
 
+function normalizeTrustProxyHops(value) {
+	if (value === undefined || value === '') {
+		return 1;
+	}
+
+	const hops = Number(value);
+
+	if (!Number.isInteger(hops) || hops < 0 || hops > 10) {
+		throw new Error('TRUST_PROXY_HOPS must be an integer between 0 and 10');
+	}
+
+	return hops;
+}
+
 if (!process.env.JWT_SECRET || !process.env.JWT_SECRET.trim()) {
 	throw new Error('JWT_SECRET environment variable is required');
 }
@@ -31,4 +45,7 @@ module.exports = {
 	CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3001',
 	DATABASE_URL: process.env.DATABASE_URL,
 	TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
+	ADMIN_EMAIL: process.env.ADMIN_EMAIL || undefined,
+	ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || undefined,
+	TRUST_PROXY_HOPS: normalizeTrustProxyHops(process.env.TRUST_PROXY_HOPS),
 };

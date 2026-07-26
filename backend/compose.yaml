@@ -40,6 +40,9 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:3001}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -1,6 +1,7 @@
 const mockListen = jest.fn();
 const mockConnectDatabase = jest.fn();
 const mockCloseDatabase = jest.fn();
+const mockBootstrapAdministrator = jest.fn();
 
 jest.mock('../src/app', () => ({
 	listen: mockListen,
@@ -9,6 +10,10 @@ jest.mock('../src/app', () => ({
 jest.mock('../src/config/db', () => ({
 	connectDatabase: mockConnectDatabase,
 	closeDatabase: mockCloseDatabase,
+}));
+
+jest.mock('../src/modules/admin/admin-bootstrap.service', () => ({
+	bootstrapAdministrator: mockBootstrapAdministrator,
 }));
 
 const env = require('../src/config/env');
@@ -28,6 +33,7 @@ describe('server lifecycle', () => {
 
 		mockConnectDatabase.mockResolvedValue(undefined);
 		mockCloseDatabase.mockResolvedValue(undefined);
+		mockBootstrapAdministrator.mockResolvedValue({ status: 'disabled' });
 		mockListen.mockReturnValue(server);
 
 		jest.spyOn(process, 'once').mockImplementation((signal, handler) => {
@@ -46,8 +52,14 @@ describe('server lifecycle', () => {
 
 		expect(serverResult).toBe(server);
 		expect(mockConnectDatabase).toHaveBeenCalledTimes(1);
+		expect(mockBootstrapAdministrator).toHaveBeenCalledWith({
+			email: env.ADMIN_EMAIL,
+			password: env.ADMIN_PASSWORD,
+		});
 		expect(mockListen).toHaveBeenCalledWith(env.PORT, env.HOST, expect.any(Function));
 		expect(mockConnectDatabase.mock.invocationCallOrder[0])
+			.toBeLessThan(mockBootstrapAdministrator.mock.invocationCallOrder[0]);
+		expect(mockBootstrapAdministrator.mock.invocationCallOrder[0])
 			.toBeLessThan(mockListen.mock.invocationCallOrder[0]);
 		expect(process.once).toHaveBeenCalledWith('SIGINT', expect.any(Function));
 		expect(process.once).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
@@ -64,6 +76,17 @@ describe('server lifecycle', () => {
 		mockConnectDatabase.mockRejectedValueOnce(connectionError);
 
 		await expect(startServer()).rejects.toBe(connectionError);
+		expect(mockBootstrapAdministrator).not.toHaveBeenCalled();
+		expect(mockListen).not.toHaveBeenCalled();
+		expect(process.once).not.toHaveBeenCalled();
+	});
+
+	test('does not open a port when administrator bootstrap fails', async () => {
+		const bootstrapError = new Error('administrator bootstrap failed');
+		mockBootstrapAdministrator.mockRejectedValueOnce(bootstrapError);
+
+		await expect(startServer()).rejects.toBe(bootstrapError);
+		expect(mockConnectDatabase).toHaveBeenCalledTimes(1);
 		expect(mockListen).not.toHaveBeenCalled();
 		expect(process.once).not.toHaveBeenCalled();
 	});
