@@ -3,6 +3,8 @@ const bcrypt = require('bcryptjs');
 const app = require('../../src/app');
 const { pool, closeDatabase } = require('../../src/config/db');
 
+const requestIdPattern = /^req_[0-9a-f]{32}$/;
+
 const appTables = [
 	'admin_login_attempts',
 	'favorites',
@@ -19,6 +21,21 @@ function expectTestDatabase(databaseName) {
 	if (!databaseName.endsWith('_test')) {
 		throw new Error(`Integration tests refuse to use non-test database: ${databaseName}`);
 	}
+}
+
+function expectRequestId(response) {
+	expect(response.body.meta.requestId).toMatch(requestIdPattern);
+}
+
+function expectErrorResponse(response, { code, message }) {
+	expect(response.body).toEqual({
+		success: false,
+		message,
+		error: {
+			code,
+			requestId: expect.stringMatching(requestIdPattern),
+		},
+	});
 }
 
 describe('PostgreSQL HTTP contracts', () => {
@@ -49,6 +66,7 @@ describe('PostgreSQL HTTP contracts', () => {
 			data: { user: { id: 1, email, role: 'user' } },
 		});
 		expect(registerResponse.body.data.accessToken).toEqual(expect.any(String));
+		expectRequestId(registerResponse);
 
 		const loginResponse = await request(app)
 			.post('/api/v1/auth/login')
@@ -121,18 +139,30 @@ describe('PostgreSQL HTTP contracts', () => {
 		await request(app)
 			.get('/api/v1/water/today')
 			.set('Authorization', authorization)
-			.expect(200, { success: true, data: { totalMl: 0 } });
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({ totalMl: 0 });
+				expectRequestId(response);
+			});
 
 		await request(app)
 			.post('/api/v1/water/today')
 			.set('Authorization', authorization)
 			.send({ amountMl: 250 })
-			.expect(200, { success: true, data: { totalMl: 250 } });
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({ totalMl: 250 });
+				expectRequestId(response);
+			});
 
 		await request(app)
 			.delete('/api/v1/water/today')
 			.set('Authorization', authorization)
-			.expect(200, { success: true, data: { totalMl: 0 } });
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({ totalMl: 0 });
+				expectRequestId(response);
+			});
 
 		await request(app)
 			.put('/api/v1/sleep/today')
@@ -229,12 +259,23 @@ describe('PostgreSQL HTTP contracts', () => {
 			.delete('/api/v1/profile')
 			.set('Authorization', authorization)
 			.send({ password })
-			.expect(200, { success: true, message: 'Account deleted' });
+			.expect(200)
+			.expect(response => {
+				expect(response.body).toMatchObject({
+					success: true,
+					message: 'Account deleted',
+				});
+				expectRequestId(response);
+			});
 
 		await request(app)
 			.post('/api/v1/auth/login')
 			.send({ login: email, password, appVersion: '1.0.0' })
-			.expect(401, { success: false, message: 'Invalid credentials' });
+			.expect(401)
+			.expect(response => expectErrorResponse(response, {
+				code: 'UNAUTHORIZED',
+				message: 'Invalid credentials',
+			}));
 
 		for (const table of appTables) {
 			const countResult = await pool.query(`SELECT COUNT(*)::integer AS count FROM ${table}`);
@@ -308,7 +349,11 @@ describe('PostgreSQL HTTP contracts', () => {
 				password: 'wrong-password',
 				appVersion: '1.2.3',
 			})
-			.expect(401, { success: false, message: 'Invalid credentials' });
+			.expect(401)
+			.expect(response => expectErrorResponse(response, {
+				code: 'UNAUTHORIZED',
+				message: 'Invalid credentials',
+			}));
 
 		await pool.query(
 			'UPDATE users SET is_active = FALSE WHERE id = $1',
@@ -324,7 +369,11 @@ describe('PostgreSQL HTTP contracts', () => {
 				password,
 				appVersion: '1.2.3',
 			})
-			.expect(403, { success: false, message: 'User account is inactive' });
+			.expect(403)
+			.expect(response => expectErrorResponse(response, {
+				code: 'FORBIDDEN',
+				message: 'User account is inactive',
+			}));
 
 		const attemptsResult = await pool.query(
 			`SELECT

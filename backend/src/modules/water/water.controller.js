@@ -1,4 +1,5 @@
 const waterService = require('./water.service');
+const { sendSuccess } = require('../../utils/http-response');
 
 async function getTodayWater(req, res, next) {
 	try {
@@ -6,10 +7,7 @@ async function getTodayWater(req, res, next) {
 
 		const water = await waterService.getTodayWater(userId);
 
-		return res.json({
-			success: true,
-			data: water,
-		});
+		return sendSuccess(res, water);
 	} catch (error) {
 		next(error);
 	}
@@ -22,10 +20,7 @@ async function addWater(req, res, next) {
 
 		const water = await waterService.addWater(userId, amountMl);
 
-		return res.json({
-			success: true,
-			data: water,
-		});
+		return sendSuccess(res, water);
 	} catch (error) {
 		next(error);
 	}
@@ -37,10 +32,7 @@ async function resetTodayWater(req, res, next) {
 
 		const water = await waterService.resetTodayWater(userId);
 
-		return res.json({
-			success: true,
-			data: water,
-		});
+		return sendSuccess(res, water);
 	} catch (error) {
 		next(error);
 	}

@@ -8,7 +8,10 @@ const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const app = require('../../src/app');
 const { pool } = require('../../src/config/db');
+const { ApiError } = require('../../src/utils/api-error');
 const { errorMiddleware } = require('../../src/middlewares/error.middleware');
+
+const requestIdPattern = /^req_[0-9a-f]{32}$/;
 
 function createAuthorization(
 	payload = { userId: 1, role: 'user' },
@@ -19,32 +22,93 @@ function createAuthorization(
 	return `Bearer ${token}`;
 }
 
+function expectSuccessResponse(response, expectedData) {
+	expect(response.body).toMatchObject({
+		success: true,
+		data: expectedData,
+		meta: {
+			requestId: expect.stringMatching(requestIdPattern),
+		},
+	});
+}
+
+function expectErrorResponse(response, { code, message, details }) {
+	expect(response.body).toEqual({
+		success: false,
+		message,
+		error: {
+			code,
+			requestId: expect.stringMatching(requestIdPattern),
+			...(details ? { details } : {}),
+		},
+	});
+}
+
 describe('HTTP application contracts', () => {
 	beforeEach(() => pool.query.mockReset());
 
-	test('GET /health returns 200 without a database connection', async () => {
-		await request(app).get('/health').expect(200, { success: true, data: 'OK' });
+	test('GET /health returns success metadata without a database connection', async () => {
+		await request(app)
+			.get('/health')
+			.expect(200)
+			.expect(response => expectSuccessResponse(response, 'OK'));
+	});
+
+	test('each HTTP request receives a unique request id', async () => {
+		const [firstResponse, secondResponse] = await Promise.all([
+			request(app).get('/health'),
+			request(app).get('/health'),
+		]);
+
+		expect(firstResponse.body.meta.requestId).toMatch(requestIdPattern);
+		expect(secondResponse.body.meta.requestId).toMatch(requestIdPattern);
+		expect(firstResponse.body.meta.requestId).not.toBe(secondResponse.body.meta.requestId);
 	});
 
 	test('an unknown route returns a predictable JSON 404', async () => {
-		await request(app).get('/missing').expect(404, {
-			success: false,
-			message: 'Route not found',
-		});
+		await request(app)
+			.get('/missing')
+			.expect(404)
+			.expect(response => expectErrorResponse(response, {
+				code: 'NOT_FOUND',
+				message: 'Route not found',
+			}));
 	});
 
 	test('request validation returns 400 instead of 500', async () => {
-		await request(app).post('/api/v1/auth/login').send({}).expect(400, {
-			success: false,
-			message: 'Поля login, password и appVersion обязательны',
-		});
+		await request(app)
+			.post('/api/v1/auth/login')
+			.send({})
+			.expect(400)
+			.expect(response => expectErrorResponse(response, {
+				code: 'VALIDATION_ERROR',
+				message: 'Поля login, password и appVersion обязательны',
+			}));
+	});
+
+	test('malformed JSON returns a contract validation error', async () => {
+		await request(app)
+			.post('/api/v1/auth/login')
+			.set('Content-Type', 'application/json')
+			.send('{"login":')
+			.expect(400)
+			.expect(response => expectErrorResponse(response, {
+				code: 'VALIDATION_ERROR',
+				message: 'Malformed JSON body',
+				details: [{
+					message: 'Request body must contain valid JSON',
+				}],
+			}));
 	});
 
 	test('a protected route without a JWT returns 401', async () => {
-		await request(app).get('/api/v1/profile').expect(401, {
-			success: false,
-			message: 'Unauthorized',
-		});
+		await request(app)
+			.get('/api/v1/profile')
+			.expect(401)
+			.expect(response => expectErrorResponse(response, {
+				code: 'UNAUTHORIZED',
+				message: 'Unauthorized',
+			}));
 	});
 
 	test.each([
@@ -56,7 +120,11 @@ describe('HTTP application contracts', () => {
 		await request(app)
 			.get('/api/v1/auth/me')
 			.set('Authorization', authorization)
-			.expect(401, { success: false, message });
+			.expect(401)
+			.expect(response => expectErrorResponse(response, {
+				code: 'UNAUTHORIZED',
+				message,
+			}));
 	});
 
 	test('a valid JWT exposes its payload on the authenticated route', async () => {
@@ -66,6 +134,7 @@ describe('HTTP application contracts', () => {
 			.expect(200)
 			.expect(response => {
 				expect(response.body.data.user).toMatchObject({ userId: 7, role: 'admin' });
+				expect(response.body.meta.requestId).toMatch(requestIdPattern);
 			});
 	});
 
@@ -83,10 +152,12 @@ describe('HTTP application contracts', () => {
 				adminRequest.set('Authorization', authorization);
 			}
 
-			await adminRequest.expect(status, {
-				success: false,
-				message,
-			});
+			await adminRequest
+				.expect(status)
+				.expect(response => expectErrorResponse(response, {
+					code: status === 403 ? 'FORBIDDEN' : 'UNAUTHORIZED',
+					message,
+				}));
 		},
 	);
 
@@ -97,10 +168,11 @@ describe('HTTP application contracts', () => {
 				'Authorization',
 				createAuthorization({ userId: 7, role: 'admin' }),
 			)
-			.expect(404, {
-				success: false,
+			.expect(404)
+			.expect(response => expectErrorResponse(response, {
+				code: 'NOT_FOUND',
 				message: 'Route not found',
-			});
+			}));
 	});
 
 	test('an administrator login audits proxy and device metadata', async () => {
@@ -134,6 +206,7 @@ describe('HTTP application contracts', () => {
 					email: 'admin@example.com',
 					role: 'admin',
 				});
+				expect(response.body.meta.requestId).toMatch(requestIdPattern);
 			});
 
 		expect(pool.query.mock.calls[1][1]).toEqual([
@@ -166,24 +239,71 @@ describe('HTTP application contracts', () => {
 			.put('/api/v1/profile')
 			.set('Authorization', createAuthorization())
 			.send(body)
-			.expect(400, { success: false, message });
+			.expect(400)
+			.expect(response => expectErrorResponse(response, {
+				code: 'VALIDATION_ERROR',
+				message,
+			}));
 
 		expect(pool.query).not.toHaveBeenCalled();
 	});
 
 	test('an unexpected exception is safely handled as a 500', async () => {
 		const errorApp = express();
-		const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 		errorApp.get('/boom', () => {
 			throw new Error('SELECT password_hash FROM Users');
 		});
 		errorApp.use(errorMiddleware);
 
-		await request(errorApp).get('/boom').expect(500, {
-			success: false,
-			message: 'Internal server error',
+		await request(errorApp)
+			.get('/boom')
+			.expect(500)
+			.expect(response => expectErrorResponse(response, {
+				code: 'INTERNAL_ERROR',
+				message: 'Internal server error',
+			}));
+	});
+
+	test('an API error exposes safe field details', async () => {
+		const errorApp = express();
+		errorApp.get('/validation', (req, res, next) => {
+			next(new ApiError(400, 'Check the request', {
+				details: [{
+					field: 'email',
+					code: 'INVALID_EMAIL',
+					message: 'Email has an invalid format',
+				}],
+			}));
 		});
-		expect(consoleError).toHaveBeenCalled();
-		consoleError.mockRestore();
+		errorApp.use(errorMiddleware);
+
+		await request(errorApp)
+			.get('/validation')
+			.expect(400)
+			.expect(response => expectErrorResponse(response, {
+				code: 'VALIDATION_ERROR',
+				message: 'Check the request',
+				details: [{
+					field: 'email',
+					code: 'INVALID_EMAIL',
+					message: 'Email has an invalid format',
+				}],
+			}));
+	});
+
+	test('an invalid API status is normalized to a safe 500', async () => {
+		const errorApp = express();
+		errorApp.get('/invalid-status', (req, res, next) => {
+			next(new ApiError(200, 'This must not be public'));
+		});
+		errorApp.use(errorMiddleware);
+
+		await request(errorApp)
+			.get('/invalid-status')
+			.expect(500)
+			.expect(response => expectErrorResponse(response, {
+				code: 'INTERNAL_ERROR',
+				message: 'Internal server error',
+			}));
 	});
 });

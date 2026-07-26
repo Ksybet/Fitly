@@ -1,4 +1,5 @@
 const service = require('./daily.service');
+const { sendSuccess } = require('../../utils/http-response');
 
 async function getToday(req, res, next) {
 	try {
@@ -6,7 +7,7 @@ async function getToday(req, res, next) {
 
 		const data = await service.getToday(userId);
 
-		res.json({ success: true, data });
+		return sendSuccess(res, data);
 	} catch (e) {
 		next(e);
 	}
@@ -18,7 +19,7 @@ async function updateToday(req, res, next) {
 
 		const data = await service.updateToday(userId, req.body);
 
-		res.json({ success: true, data });
+		return sendSuccess(res, data);
 	} catch (e) {
 		next(e);
 	}

@@ -1,4 +1,5 @@
 const { loginUser, registerUser } = require('./auth.service');
+const { sendSuccess } = require('../../utils/http-response');
 
 async function login(req, res, next) {
 	try {
@@ -12,10 +13,7 @@ async function login(req, res, next) {
 			device: req.get('user-agent'),
 		});
 
-		res.status(200).json({
-			success: true,
-			data: result,
-		});
+		return sendSuccess(res, result);
 	} catch (error) {
 		next(error);
 	}
@@ -27,10 +25,7 @@ async function register(req, res, next) {
 
 		const result = await registerUser({ email, password, appVersion });
 
-		res.status(201).json({
-			success: true,
-			data: result,
-		});
+		return sendSuccess(res, result, { status: 201 });
 	} catch (error) {
 		next(error);
 	}
@@ -38,11 +33,8 @@ async function register(req, res, next) {
 
 async function me(req, res, next) {
 	try {
-		res.status(200).json({
-			success: true,
-			data: {
-				user: req.user,
-			},
+		return sendSuccess(res, {
+			user: req.user,
 		});
 	} catch (error) {
 		next(error);

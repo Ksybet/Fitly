@@ -15,12 +15,17 @@ const {
 	authMiddleware,
 	requireRole,
 } = require('./modules/auth/auth.middleware');
+const { ApiError } = require('./utils/api-error');
+const { sendSuccess } = require('./utils/http-response');
 const { errorMiddleware } = require('./middlewares/error.middleware');
+const {
+	requestContextMiddleware,
+} = require('./middlewares/request-context.middleware');
 
 const app = express();
 
 app.set('trust proxy', env.TRUST_PROXY_HOPS);
-app.use(express.json());
+app.use(requestContextMiddleware);
 
 app.use(
 	cors({
@@ -29,15 +34,14 @@ app.use(
 	}),
 );
 
+app.use(express.json());
+
 app.get('/', (req, res) => {
 	res.send('Fitly API работает');
 });
 
 app.get('/health', (req, res) => {
-	res.status(200).json({
-		success: true,
-		data: 'OK',
-	});
+	return sendSuccess(res, 'OK');
 });
 
 app.use('/api/v1/auth', authRoutes);
@@ -50,11 +54,8 @@ app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/daily', dailyRoutes);
 app.use('/api/v1/admin', authMiddleware, requireRole('admin'));
 
-app.use((req, res) => {
-	res.status(404).json({
-		success: false,
-		message: 'Route not found',
-	});
+app.use((req, res, next) => {
+	next(new ApiError(404, 'Route not found'));
 });
 
 app.use(errorMiddleware);
