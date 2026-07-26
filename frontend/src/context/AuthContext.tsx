@@ -1,22 +1,30 @@
-import React, { createContext, useEffect, useState, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import httpClient from '../api/httpClient';
-
-type User = {
-	userId?: string;
-	id?: string;
-	email?: string;
-	name?: string;
-	firstName?: string;
-	lastName?: string;
-	birthDate?: string;
-	weightKg?: number;
-	heightCm?: number;
-	gender?: string;
-	role?: string;
-	appVersion?: string;
-};
+import React, {
+	createContext,
+	ReactNode,
+	useCallback,
+	useEffect,
+	useState,
+} from 'react';
+import {
+	getMe,
+	login as loginRequest,
+	register as registerRequest,
+} from '../api/auth.api';
+import {
+	getApiErrorMessage,
+	normalizeApiError,
+	withRequestId,
+} from '../api/api-error';
+import type { User } from '../api/contracts';
+import { setUnauthorizedHandler } from '../api/httpClient';
+import {
+	clearStoredSession,
+	getStoredSession,
+	saveAuthSession,
+	updateStoredUser,
+} from '../api/session.storage';
 
 type AuthContextType = {
 	token: string | null;
@@ -27,12 +35,13 @@ type AuthContextType = {
 	register: (email: string, password: string) => Promise<void>;
 	logout: () => Promise<void>;
 	setError: React.Dispatch<React.SetStateAction<string>>;
-	updateUserData: (data: Partial<User>) => void;
 };
 
 type Props = {
 	children: ReactNode;
 };
+
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export const AuthContext = createContext<AuthContextType>({
 	token: null,
@@ -43,180 +52,153 @@ export const AuthContext = createContext<AuthContextType>({
 	register: async () => {},
 	logout: async () => {},
 	setError: () => {},
-	updateUserData: () => {},
 });
+
+function getAuthenticationErrorMessage(
+	error: unknown,
+	mode: 'login' | 'register',
+): string {
+	const apiError = normalizeApiError(error);
+	const translations: Partial<Record<string, string>> = {
+		INVALID_CREDENTIALS: 'Неверный email или пароль',
+		UNAUTHORIZED: 'Не удалось выполнить авторизацию',
+		VALIDATION_ERROR: 'Проверьте введённые данные',
+		RATE_LIMIT_EXCEEDED:
+			'Слишком много попыток. Попробуйте повторить позже',
+		SERVICE_UNAVAILABLE: 'Сервис временно недоступен',
+		INTERNAL_ERROR: 'Сервис временно недоступен',
+	};
+
+	if (mode === 'register' && apiError.code === 'STATE_CONFLICT') {
+		return withRequestId(
+			'Пользователь с таким email уже зарегистрирован',
+			apiError.requestId,
+		);
+	}
+
+	return getApiErrorMessage(
+		apiError,
+		mode === 'login'
+			? 'Не удалось выполнить вход'
+			: 'Не удалось зарегистрироваться',
+		translations,
+	);
+}
 
 export const AuthProvider = ({ children }: Props) => {
 	const [token, setToken] = useState<string | null>(null);
 	const [user, setUser] = useState<User | null>(null);
-	const [isLoading, setIsLoading] = useState<boolean>(true);
-	const [error, setError] = useState<string>('');
+	const [isLoading, setIsLoading] = useState(true);
+	const [error, setError] = useState('');
 
-	const clearSession = async () => {
-		await AsyncStorage.removeItem('userToken');
-		await AsyncStorage.removeItem('profile');
-
+	const clearSession = useCallback(async () => {
+		await clearStoredSession();
 		setToken(null);
 		setUser(null);
 		setError('');
-
-		delete httpClient.defaults.headers.common.Authorization;
-	};
+	}, []);
 
 	useEffect(() => {
+		setUnauthorizedHandler(async () => {
+			await clearSession();
+			router.replace('/login');
+		});
+
+		return () => setUnauthorizedHandler(null);
+	}, [clearSession]);
+
+	useEffect(() => {
+		let isMounted = true;
+
 		const loadSession = async () => {
 			try {
-				const storedToken = await AsyncStorage.getItem('userToken');
+				const storedSession = await getStoredSession();
 
-				if (!storedToken) {
-					setIsLoading(false);
-					return;
+				if (!storedSession) return;
+
+				if (isMounted) {
+					setToken(storedSession.token);
+					setUser(storedSession.user.id > 0 ? storedSession.user : null);
 				}
 
-				httpClient.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
-
 				try {
-					const response = await httpClient.get('/auth/me');
+					const currentUser = await getMe();
+					await updateStoredUser(currentUser);
 
-					setToken(storedToken);
-					setUser(response?.data?.data?.user || null);
-				} catch (e: any) {
-					console.log('SESSION ERROR:', e?.message);
-					console.log('SESSION RESPONSE:', e?.response?.data);
+					if (isMounted) {
+						setToken(storedSession.token);
+						setUser(currentUser);
+					}
+				} catch (sessionError) {
+					const apiError = normalizeApiError(sessionError);
 
-					if (e?.response?.status === 401) {
-						await clearSession();
-					} else {
+					if (apiError.status === 401) {
 						await clearSession();
 					}
 				}
-			} catch (e: any) {
-				console.log('LOAD SESSION ERROR:', e?.message);
+			} catch {
 				await clearSession();
 			} finally {
-				setIsLoading(false);
+				if (isMounted) setIsLoading(false);
 			}
 		};
 
-		loadSession();
-	}, []);
+		void loadSession();
 
-	const updateUserData = (data: Partial<User>) => {
-		setUser(prev => ({
-			...(prev || {}),
-			...data,
-		}));
-	};
-
-	const translateError = (message?: string): string => {
-		const translations: Record<string, string> = {
-			'Invalid credentials': 'Неверный email или пароль',
-			'User account is inactive': 'Аккаунт деактивирован',
-			'User already exists': 'Пользователь с таким email уже зарегистрирован',
-			'Too many requests': 'Слишком много попыток. Попробуйте позже',
-			Unauthorized: 'Необходима авторизация',
+		return () => {
+			isMounted = false;
 		};
-
-		return translations[message || ''] || message || 'Произошла ошибка';
-	};
+	}, [clearSession]);
 
 	const login = async (loginId: string, password: string): Promise<void> => {
 		setIsLoading(true);
 		setError('');
 
 		try {
-			console.log('LOGIN REQUEST START');
-
-			const response = await httpClient.post('/auth/login', {
+			const authData = await loginRequest({
 				login: loginId,
 				password,
-				appVersion: '1.0.0',
+				appVersion: APP_VERSION,
 			});
 
-			console.log('LOGIN RESPONSE:', response?.data);
-
-			if (response?.data?.data?.accessToken) {
-				const accessToken: string = response.data.data.accessToken;
-				const userData: User = response.data.data.user;
-
-				await AsyncStorage.setItem('userToken', accessToken);
-
-				httpClient.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-
-				setToken(accessToken);
-				setUser(userData);
-
-				console.log('LOGIN SUCCESS');
-			} else {
-				setError('Некорректный ответ сервера');
-			}
-		} catch (e: any) {
-			console.log('LOGIN ERROR MESSAGE:', e?.message);
-			console.log('LOGIN ERROR RESPONSE:', e?.response?.data);
-			console.log('LOGIN ERROR STATUS:', e?.response?.status);
-
-			if (e?.response?.data?.message) {
-				setError(translateError(e.response.data.message));
-			} else {
-				setError(`Ошибка соединения: ${e?.message || 'unknown error'}`);
-			}
+			await saveAuthSession(authData);
+			setToken(authData.token);
+			setUser(authData.user);
+		} catch (requestError) {
+			setError(getAuthenticationErrorMessage(requestError, 'login'));
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
-	const register = async (email: string, password: string): Promise<void> => {
+	const register = async (
+		email: string,
+		password: string,
+	): Promise<void> => {
 		setIsLoading(true);
 		setError('');
 
 		try {
-			console.log('REGISTER REQUEST START');
-
-			const response = await httpClient.post('/auth/register', {
+			const authData = await registerRequest({
 				email,
 				password,
-				appVersion: '1.0.0',
+				passwordConfirmation: password,
+				appVersion: APP_VERSION,
 			});
 
-			console.log('REGISTER RESPONSE:', response?.data);
-
-			if (response?.data?.data?.accessToken) {
-				const accessToken: string = response.data.data.accessToken;
-				const userData: User = response.data.data.user;
-
-				await AsyncStorage.setItem('userToken', accessToken);
-
-				httpClient.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-
-				setToken(accessToken);
-				setUser(userData);
-
-				console.log('REGISTER SUCCESS');
-			} else {
-				setError('Некорректный ответ сервера при регистрации');
-			}
-		} catch (e: any) {
-			console.log('REGISTER ERROR MESSAGE:', e?.message);
-			console.log('REGISTER ERROR RESPONSE:', e?.response?.data);
-			console.log('REGISTER ERROR STATUS:', e?.response?.status);
-
-			if (e?.response?.data?.message) {
-				setError(translateError(e.response.data.message));
-			} else {
-				setError(`Ошибка соединения: ${e?.message || 'unknown error'}`);
-			}
+			await saveAuthSession(authData);
+			setToken(authData.token);
+			setUser(authData.user);
+		} catch (requestError) {
+			setError(getAuthenticationErrorMessage(requestError, 'register'));
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
 	const logout = async (): Promise<void> => {
-		try {
-			await clearSession();
-			router.replace('/login');
-		} catch (e: any) {
-			console.log('LOGOUT ERROR:', e?.message);
-		}
+		await clearSession();
+		router.replace('/login');
 	};
 
 	return (
@@ -230,7 +212,6 @@ export const AuthProvider = ({ children }: Props) => {
 				register,
 				logout,
 				setError,
-				updateUserData,
 			}}
 		>
 			{children}

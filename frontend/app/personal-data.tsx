@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from 'react';
 import {
 	View,
 	Text,
@@ -21,6 +27,12 @@ import {
 	updateMyProfile,
 	deleteMyAccount,
 } from '../src/api/profile.api';
+import {
+	getApiErrorMessage,
+	normalizeApiError,
+	withRequestId,
+} from '../src/api/api-error';
+import type { UpdateProfileRequest } from '../src/api/contracts';
 
 import EditFieldModal from '../src/components/modals/EditFieldModal';
 import EditDateModal from '../src/components/modals/EditDateModal';
@@ -103,7 +115,7 @@ function DataRow({
 }
 
 export default function PersonalDataScreen() {
-	const { user, updateUserData, logout } = useContext(AuthContext);
+	const { user, logout } = useContext(AuthContext);
 	const { colors } = useContext(ThemeContext);
 
 	const [profile, setProfile] = useState<ProfileState>({
@@ -138,55 +150,43 @@ export default function PersonalDataScreen() {
 		setErrorModalVisible(true);
 	};
 
-	useEffect(() => {
-		loadProfile();
-	}, []);
-
-	const loadProfile = async () => {
+	const loadProfile = useCallback(async () => {
 		try {
 			setIsLoading(true);
 
 			const data = await getMyProfile();
 
 			setProfile({
-				email: user?.email || '',
-				firstName: data?.firstName || user?.firstName || user?.name || '',
-				birthDate: data?.birthDate || user?.birthDate || '',
+				email: data.email,
+				firstName: data.firstName || '',
+				birthDate: data.birthDate || '',
 				weightKg:
-					data?.weightKg !== undefined && data?.weightKg !== null
+					data.weightKg !== undefined && data.weightKg !== null
 						? String(data.weightKg)
-						: user?.weightKg !== undefined && user?.weightKg !== null
-							? String(user.weightKg)
-							: '',
+						: '',
 				heightCm:
-					data?.heightCm !== undefined && data?.heightCm !== null
+					data.heightCm !== undefined && data.heightCm !== null
 						? String(data.heightCm)
-						: user?.heightCm !== undefined && user?.heightCm !== null
-							? String(user.heightCm)
-							: '',
-				gender: data?.gender || user?.gender || '',
+						: '',
+				gender: data.gender || '',
 			});
-		} catch (e) {
-			console.log('Ошибка загрузки профиля', e);
-
+		} catch {
 			setProfile({
 				email: user?.email || '',
-				firstName: user?.firstName || user?.name || '',
-				birthDate: user?.birthDate || '',
-				weightKg:
-					user?.weightKg !== undefined && user?.weightKg !== null
-						? String(user.weightKg)
-						: '',
-				heightCm:
-					user?.heightCm !== undefined && user?.heightCm !== null
-						? String(user.heightCm)
-						: '',
-				gender: user?.gender || '',
+				firstName: '',
+				birthDate: '',
+				weightKg: '',
+				heightCm: '',
+				gender: '',
 			});
 		} finally {
 			setIsLoading(false);
 		}
-	};
+	}, [user?.email]);
+
+	useEffect(() => {
+		void loadProfile();
+	}, [loadProfile]);
 
 	const formattedBirthDate = useMemo(() => {
 		if (!profile.birthDate) return 'Не указано';
@@ -211,6 +211,8 @@ export default function PersonalDataScreen() {
 				? 'Женский'
 				: profile.gender === 'other'
 					? 'Другое'
+					: profile.gender === 'prefer_not_to_say'
+						? 'Не хочу указывать'
 					: 'Не указано';
 
 	const emailText = profile.email || 'Не указано';
@@ -281,30 +283,17 @@ export default function PersonalDataScreen() {
 
 			setProfile(nextState);
 
-			updateUserData({
-				email: profile.email,
-				firstName: nextState.firstName,
-				name: nextState.firstName || user?.name || '',
-				birthDate: nextState.birthDate,
-				weightKg: nextState.weightKg ? Number(nextState.weightKg) : undefined,
-				heightCm: nextState.heightCm ? Number(nextState.heightCm) : undefined,
-				gender: nextState.gender,
-			});
-
 			setFieldModalVisible(false);
 			setDateModalVisible(false);
 			setGenderModalVisible(false);
 			setSelectedField(null);
 			setSelectedValue('');
-		} catch (e: any) {
-			console.log('Ошибка обновления профиля статус:', e?.response?.status);
-			console.log('Ошибка обновления профиля данные:', e?.response?.data);
-			console.log(
-				'Ошибка обновления профиля payload:',
-				buildPayload(selectedField, newValue),
+		} catch (requestError) {
+			showError(
+				getApiErrorMessage(requestError, 'Не удалось сохранить данные', {
+					VALIDATION_ERROR: 'Проверьте введённые данные',
+				}),
 			);
-
-			showError(e?.response?.data?.message || 'Не удалось сохранить данные');
 		} finally {
 			setIsSaving(false);
 		}
@@ -328,23 +317,22 @@ export default function PersonalDataScreen() {
 
 			setDeleteModalVisible(false);
 			await logout();
-		} catch (e: any) {
-			const message =
-				e?.response?.data?.message ||
-				e?.response?.data?.error ||
-				'Ошибка сервера';
+		} catch (requestError) {
+			const apiError = normalizeApiError(requestError);
 
-			if (message.toLowerCase().includes('password')) {
-				showError('Неверный пароль');
+			if (apiError.status === 401) {
+				showError(
+					withRequestId('Неверный пароль', apiError.requestId),
+				);
 				return;
 			}
 
-			if (e?.response?.status === 401) {
-				showError('Сессия истекла, войдите заново');
-				return;
-			}
-
-			showError(message);
+			showError(
+				getApiErrorMessage(
+					apiError,
+					'Не удалось удалить аккаунт',
+				),
+			);
 		} finally {
 			setIsDeleting(false);
 		}
@@ -613,7 +601,10 @@ export default function PersonalDataScreen() {
 	);
 }
 
-function buildPayload(field: ProfileField | null, value: string) {
+function buildPayload(
+	field: ProfileField | null,
+	value: string,
+): UpdateProfileRequest {
 	switch (field) {
 		case 'firstName':
 			return { firstName: value.trim() };
@@ -628,7 +619,16 @@ function buildPayload(field: ProfileField | null, value: string) {
 			return { heightCm: Number(String(value).replace(',', '.')) };
 
 		case 'gender':
-			return { gender: value };
+			if (
+				value === 'male' ||
+				value === 'female' ||
+				value === 'other' ||
+				value === 'prefer_not_to_say'
+			) {
+				return { gender: value };
+			}
+
+			return {};
 
 		default:
 			return {};

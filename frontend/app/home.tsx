@@ -196,8 +196,6 @@ export default function HomeScreen() {
 
 	const userName =
 		profileData.firstName ||
-		user?.firstName ||
-		user?.name ||
 		user?.email?.split('@')[0] ||
 		'пользователь';
 
