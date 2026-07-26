@@ -10,13 +10,13 @@ const sleepRoutes = require('./modules/sleep/sleep.routes');
 const moodRoutes = require('./modules/mood/mood.routes');
 const favoritesRoutes = require('./modules/favorites/favorites.routes');
 const dailyRoutes = require('./modules/daily/daily.routes');
+const systemRoutes = require('./modules/system/system.routes');
 
 const {
 	authMiddleware,
 	requireRole,
 } = require('./modules/auth/auth.middleware');
 const { ApiError } = require('./utils/api-error');
-const { sendSuccess } = require('./utils/http-response');
 const { errorMiddleware } = require('./middlewares/error.middleware');
 const {
 	requestContextMiddleware,
@@ -36,13 +36,7 @@ app.use(
 
 app.use(express.json());
 
-app.get('/', (req, res) => {
-	res.send('Fitly API работает');
-});
-
-app.get('/health', (req, res) => {
-	return sendSuccess(res, 'OK');
-});
+app.use(systemRoutes);
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/profile', profileRoutes);

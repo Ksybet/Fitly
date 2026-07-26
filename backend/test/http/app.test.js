@@ -47,11 +47,35 @@ function expectErrorResponse(response, { code, message, details }) {
 describe('HTTP application contracts', () => {
 	beforeEach(() => pool.query.mockReset());
 
-	test('GET /health returns success metadata without a database connection', async () => {
+	test('GET /health reports API and database availability', async () => {
+		pool.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+
 		await request(app)
 			.get('/health')
 			.expect(200)
-			.expect(response => expectSuccessResponse(response, 'OK'));
+			.expect(response => {
+				expectSuccessResponse(response, {
+					status: 'ok',
+					database: 'ok',
+					timestamp: expect.any(String),
+				});
+				expect(new Date(response.body.data.timestamp).toISOString())
+					.toBe(response.body.data.timestamp);
+			});
+
+		expect(pool.query).toHaveBeenCalledWith('SELECT 1');
+	});
+
+	test('GET /health returns 503 when the database is unavailable', async () => {
+		pool.query.mockRejectedValueOnce(new Error('connection refused'));
+
+		await request(app)
+			.get('/health')
+			.expect(503)
+			.expect(response => expectErrorResponse(response, {
+				code: 'SERVICE_UNAVAILABLE',
+				message: 'Service temporarily unavailable',
+			}));
 	});
 
 	test('each HTTP request receives a unique request id', async () => {
@@ -68,6 +92,16 @@ describe('HTTP application contracts', () => {
 	test('an unknown route returns a predictable JSON 404', async () => {
 		await request(app)
 			.get('/missing')
+			.expect(404)
+			.expect(response => expectErrorResponse(response, {
+				code: 'NOT_FOUND',
+				message: 'Route not found',
+			}));
+	});
+
+	test('the undocumented root route is not exposed', async () => {
+		await request(app)
+			.get('/')
 			.expect(404)
 			.expect(response => expectErrorResponse(response, {
 				code: 'NOT_FOUND',
