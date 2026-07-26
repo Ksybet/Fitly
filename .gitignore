@@ -3,3 +3,4 @@ backend/.env.test
 .env
 backend/node_modules/
 backend/coverage/
+AGENTS.md
