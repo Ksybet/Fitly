@@ -5,6 +5,7 @@ const env = require('./config/env');
 const authRoutes = require('./modules/auth/auth.routes');
 const goalsRoutes = require('./modules/goals/goals.routes');
 const profileRoutes = require('./modules/profile/profile.routes');
+const accountRoutes = require('./modules/account/account.routes');
 const waterRoutes = require('./modules/water/water.routes');
 const sleepRoutes = require('./modules/sleep/sleep.routes');
 const moodRoutes = require('./modules/mood/mood.routes');
@@ -40,6 +41,7 @@ app.use(systemRoutes);
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/profile', profileRoutes);
+app.use('/api/v1/account', accountRoutes);
 app.use('/api/v1/goals', goalsRoutes);
 app.use('/api/v1/water', waterRoutes);
 app.use('/api/v1/sleep', sleepRoutes);

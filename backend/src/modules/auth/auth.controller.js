@@ -1,4 +1,8 @@
-const { loginUser, registerUser } = require('./auth.service');
+const {
+	loginUser,
+	registerUser,
+	getCurrentUser,
+} = require('./auth.service');
 const { sendSuccess } = require('../../utils/http-response');
 
 async function login(req, res, next) {
@@ -33,9 +37,9 @@ async function register(req, res, next) {
 
 async function me(req, res, next) {
 	try {
-		return sendSuccess(res, {
-			user: req.user,
-		});
+		const user = await getCurrentUser(req.user.userId);
+
+		return sendSuccess(res, user);
 	} catch (error) {
 		next(error);
 	}

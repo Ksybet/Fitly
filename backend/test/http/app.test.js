@@ -116,8 +116,50 @@ describe('HTTP application contracts', () => {
 			.expect(400)
 			.expect(response => expectErrorResponse(response, {
 				code: 'VALIDATION_ERROR',
-				message: 'Поля login, password и appVersion обязательны',
+				message: 'Request validation failed',
+				details: [
+					{
+						field: 'login',
+						code: 'REQUIRED',
+						message: 'login is required',
+					},
+					{
+						field: 'password',
+						code: 'REQUIRED',
+						message: 'password is required',
+					},
+				],
 			}));
+	});
+
+	test('registration validates password strength and rejects unknown fields', async () => {
+		const response = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'user@example.com',
+				password: 'weak',
+				unknown: true,
+			})
+			.expect(400);
+
+		expect(response.body).toMatchObject({
+			success: false,
+			message: 'Request validation failed',
+			error: {
+				code: 'VALIDATION_ERROR',
+				requestId: expect.stringMatching(requestIdPattern),
+				details: expect.arrayContaining([
+					expect.objectContaining({
+						field: 'unknown',
+						code: 'UNKNOWN_FIELD',
+					}),
+					expect.objectContaining({
+						field: 'password',
+						code: 'WEAK_PASSWORD',
+					}),
+				]),
+			},
+		});
 	});
 
 	test('malformed JSON returns a contract validation error', async () => {
@@ -145,11 +187,49 @@ describe('HTTP application contracts', () => {
 			}));
 	});
 
+	test('account deletion requires the documented confirmation body', async () => {
+		const response = await request(app)
+			.delete('/api/v1/account')
+			.set('Authorization', createAuthorization())
+			.send({ password: 'Fitly#2026', confirmation: 'delete' })
+			.expect(400);
+
+		expect(response.body).toMatchObject({
+			success: false,
+			message: 'Request validation failed',
+			error: {
+				code: 'VALIDATION_ERROR',
+				requestId: expect.stringMatching(requestIdPattern),
+				details: [
+					expect.objectContaining({
+						field: 'confirmation',
+						code: 'INVALID_CONFIRMATION',
+					}),
+				],
+			},
+		});
+		expect(pool.query).not.toHaveBeenCalled();
+	});
+
+	test('the undocumented profile deletion route is not exposed', async () => {
+		await request(app)
+			.delete('/api/v1/profile')
+			.set('Authorization', createAuthorization())
+			.send({ password: 'Fitly#2026' })
+			.expect(404)
+			.expect(response => expectErrorResponse(response, {
+				code: 'NOT_FOUND',
+				message: 'Route not found',
+			}));
+	});
+
 	test.each([
 		['Bearer ', 'Unauthorized'],
 		['Bearer not-a-jwt', 'Invalid or expired token'],
 		[createAuthorization(undefined, { expiresIn: -1 }), 'Invalid or expired token'],
 		[createAuthorization(undefined, {}, 'different-secret'), 'Invalid or expired token'],
+		[createAuthorization({ role: 'user' }), 'Invalid or expired token'],
+		[createAuthorization({ userId: 1, role: 'operator' }), 'Invalid or expired token'],
 	])('a protected route rejects an invalid authorization header', async (authorization, message) => {
 		await request(app)
 			.get('/api/v1/auth/me')
@@ -161,13 +241,35 @@ describe('HTTP application contracts', () => {
 			}));
 	});
 
-	test('a valid JWT exposes its payload on the authenticated route', async () => {
+	test('a valid JWT loads the contract user instead of exposing token claims', async () => {
+		pool.query.mockResolvedValueOnce({
+			rows: [{
+				id: 7,
+				email: 'admin@example.com',
+				passwordHash: 'hidden',
+				role: 'admin',
+				isActive: true,
+				emailVerified: true,
+				appVersion: null,
+				createdAt: '2026-07-26T10:00:00.000Z',
+				updatedAt: '2026-07-26T10:00:00.000Z',
+			}],
+		});
+
 		await request(app)
 			.get('/api/v1/auth/me')
 			.set('Authorization', createAuthorization({ userId: 7, role: 'admin' }))
 			.expect(200)
 			.expect(response => {
-				expect(response.body.data.user).toMatchObject({ userId: 7, role: 'admin' });
+				expect(response.body.data).toEqual({
+					id: 7,
+					email: 'admin@example.com',
+					role: 'admin',
+					status: 'active',
+					emailVerified: true,
+					appVersion: null,
+					createdAt: '2026-07-26T10:00:00.000Z',
+				});
 				expect(response.body.meta.requestId).toMatch(requestIdPattern);
 			});
 	});
@@ -220,9 +322,26 @@ describe('HTTP application contracts', () => {
 					passwordHash,
 					role: 'admin',
 					isActive: true,
+					emailVerified: false,
+					appVersion: null,
+					createdAt: '2026-07-26T10:00:00.000Z',
 				}],
 			})
-			.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+			.mockResolvedValueOnce({ rows: [{ id: 1 }] })
+			.mockResolvedValueOnce({
+				rows: [{
+					id: 7,
+					email: 'admin@example.com',
+					passwordHash,
+					role: 'admin',
+					isActive: true,
+					emailVerified: false,
+					appVersion: '1.2.3',
+					createdAt: '2026-07-26T10:00:00.000Z',
+					updatedAt: '2026-07-26T10:00:00.000Z',
+				}],
+			})
+			.mockResolvedValueOnce({ rows: [{ id: 2 }] });
 
 		await request(app)
 			.post('/api/v1/auth/login')
@@ -235,10 +354,20 @@ describe('HTTP application contracts', () => {
 			})
 			.expect(200)
 			.expect(response => {
-				expect(response.body.data.user).toEqual({
-					id: 7,
-					email: 'admin@example.com',
-					role: 'admin',
+				expect(response.body.data).toMatchObject({
+					token: expect.any(String),
+					refreshToken: expect.any(String),
+					tokenType: 'Bearer',
+					expiresIn: 3600,
+					user: {
+						id: 7,
+						email: 'admin@example.com',
+						role: 'admin',
+						status: 'active',
+						emailVerified: false,
+						appVersion: '1.2.3',
+						createdAt: '2026-07-26T10:00:00.000Z',
+					},
 				});
 				expect(response.body.meta.requestId).toMatch(requestIdPattern);
 			});
@@ -255,30 +384,36 @@ describe('HTTP application contracts', () => {
 	});
 
 	test.each([
-		[{ firstName: 42 }, 'firstName must be a string'],
-		[{ birthDate: 42 }, 'birthDate must be a string'],
-		[{ birthDate: '02.01.2000' }, 'birthDate must be in YYYY-MM-DD format'],
-		[{ gender: 42 }, 'gender must be a string'],
-		[{ gender: 'unknown' }, 'gender must be one of: male, female, other'],
-		[{ heightCm: '170' }, 'heightCm must be a number'],
-		[{ heightCm: 0 }, 'heightCm must be between 1 and 300'],
-		[{ heightCm: 301 }, 'heightCm must be between 1 and 300'],
-		[{ weightKg: '60' }, 'weightKg must be a number'],
-		[{ weightKg: 0 }, 'weightKg must be between 1 and 500'],
-		[{ weightKg: 501 }, 'weightKg must be between 1 and 500'],
-	])('profile validation rejects %p without accessing the database', async (body, message) => {
+		[{ firstName: 42 }, 'firstName', 'INVALID_LENGTH'],
+		[{ birthDate: 42 }, 'birthDate', 'INVALID_DATE'],
+		[{ birthDate: '02.01.2000' }, 'birthDate', 'INVALID_DATE'],
+		[{ gender: 42 }, 'gender', 'INVALID_ENUM'],
+		[{ gender: 'unknown' }, 'gender', 'INVALID_ENUM'],
+		[{ heightCm: '170' }, 'heightCm', 'OUT_OF_RANGE'],
+		[{ heightCm: 49 }, 'heightCm', 'OUT_OF_RANGE'],
+		[{ heightCm: 261 }, 'heightCm', 'OUT_OF_RANGE'],
+		[{ weightKg: '60' }, 'weightKg', 'OUT_OF_RANGE'],
+		[{ weightKg: 19 }, 'weightKg', 'OUT_OF_RANGE'],
+		[{ weightKg: 501 }, 'weightKg', 'OUT_OF_RANGE'],
+		[{ unknown: true }, 'unknown', 'UNKNOWN_FIELD'],
+	])('profile validation rejects %p without accessing the database', async (body, field, detailCode) => {
 		pool.query.mockClear();
 
-		await request(app)
+		const response = await request(app)
 			.put('/api/v1/profile')
 			.set('Authorization', createAuthorization())
 			.send(body)
-			.expect(400)
-			.expect(response => expectErrorResponse(response, {
-				code: 'VALIDATION_ERROR',
-				message,
-			}));
+			.expect(400);
 
+		expect(response.body).toMatchObject({
+			success: false,
+			message: 'Request validation failed',
+			error: {
+				code: 'VALIDATION_ERROR',
+				requestId: expect.stringMatching(requestIdPattern),
+				details: [expect.objectContaining({ field, code: detailCode })],
+			},
+		});
 		expect(pool.query).not.toHaveBeenCalled();
 	});
 

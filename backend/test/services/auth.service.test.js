@@ -1,178 +1,240 @@
 jest.mock('../../src/modules/user/user.repository', () => ({
 	findUserByEmail: jest.fn(),
+	findUserById: jest.fn(),
 	createUser: jest.fn(),
+	updateUserAppVersion: jest.fn(),
+}));
+jest.mock('../../src/modules/auth/auth-session.repository', () => ({
+	createSession: jest.fn(),
 }));
 jest.mock('bcryptjs', () => ({ compare: jest.fn(), hash: jest.fn() }));
-jest.mock('../../src/utils/token', () => ({ generateAccessToken: jest.fn() }));
+jest.mock('../../src/utils/token', () => ({
+	generateAccessToken: jest.fn(),
+	getAccessTokenExpiresIn: jest.fn(),
+	generateRefreshToken: jest.fn(),
+	hashRefreshToken: jest.fn(),
+}));
 jest.mock('../../src/modules/admin/admin-login-audit.service', () => ({
 	recordAdminLoginAttempt: jest.fn(),
 }));
 
 const bcrypt = require('bcryptjs');
 const userRepository = require('../../src/modules/user/user.repository');
-const { generateAccessToken } = require('../../src/utils/token');
+const { createSession } = require('../../src/modules/auth/auth-session.repository');
+const token = require('../../src/utils/token');
 const {
 	recordAdminLoginAttempt,
 } = require('../../src/modules/admin/admin-login-audit.service');
-const { loginUser, registerUser } = require('../../src/modules/auth/auth.service');
+const {
+	loginUser,
+	registerUser,
+	getCurrentUser,
+} = require('../../src/modules/auth/auth.service');
+
+const activeUser = {
+	id: 7,
+	email: 'user@example.com',
+	role: 'user',
+	isActive: true,
+	emailVerified: false,
+	appVersion: null,
+	createdAt: '2026-01-01T00:00:00.000Z',
+	passwordHash: 'hash',
+};
 
 describe('auth service', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		recordAdminLoginAttempt.mockResolvedValue(null);
+		token.generateAccessToken.mockReturnValue('access-token');
+		token.generateRefreshToken.mockReturnValue('refresh-token');
+		token.hashRefreshToken.mockReturnValue('refresh-hash');
+		token.getAccessTokenExpiresIn.mockReturnValue(3600);
+		createSession.mockResolvedValue({ id: 1 });
 	});
 
-	test('rejects login with missing required fields', async () => {
-		await expect(loginUser({ login: '', password: 'secret', appVersion: '1.0' }))
-			.rejects.toMatchObject({ status: 400 });
-	});
-
-	test('rejects a missing or inactive user and an invalid password', async () => {
+	test('uses the same invalid-credentials response for missing, blocked, and mismatched users', async () => {
 		userRepository.findUserByEmail.mockResolvedValueOnce(null);
-		await expect(loginUser({ login: 'a@b.c', password: 'secret', appVersion: '1.0' }))
-			.rejects.toMatchObject({ status: 401 });
-
-		userRepository.findUserByEmail.mockResolvedValueOnce({ isActive: false });
-		await expect(loginUser({ login: 'a@b.c', password: 'secret', appVersion: '1.0' }))
-			.rejects.toMatchObject({ status: 403 });
+		await expect(loginUser({
+			login: 'user@example.com',
+			password: 'wrong',
+		})).rejects.toMatchObject({
+			status: 401,
+			code: 'INVALID_CREDENTIALS',
+		});
 
 		userRepository.findUserByEmail.mockResolvedValueOnce({
-			id: 1, email: 'a@b.c', role: 'user', isActive: true, passwordHash: 'hash',
+			...activeUser,
+			isActive: false,
 		});
+		await expect(loginUser({
+			login: activeUser.email,
+			password: 'wrong',
+		})).rejects.toMatchObject({
+			status: 401,
+			code: 'INVALID_CREDENTIALS',
+		});
+
+		userRepository.findUserByEmail.mockResolvedValueOnce(activeUser);
 		bcrypt.compare.mockResolvedValueOnce(false);
-		await expect(loginUser({ login: 'a@b.c', password: 'secret', appVersion: '1.0' }))
-			.rejects.toMatchObject({ status: 401 });
+		await expect(loginUser({
+			login: activeUser.email,
+			password: 'wrong',
+		})).rejects.toMatchObject({
+			status: 401,
+			code: 'INVALID_CREDENTIALS',
+		});
 	});
 
-	test('returns a safe successful login result and creates the expected JWT payload', async () => {
-		const user = { id: 7, email: 'a@b.c', role: 'user', isActive: true, passwordHash: 'hash' };
-		userRepository.findUserByEmail.mockResolvedValue(user);
+	test('returns the documented token pair and persists only the refresh-token hash', async () => {
+		const updatedUser = { ...activeUser, appVersion: '1.2.3' };
+		userRepository.findUserByEmail.mockResolvedValue(activeUser);
+		userRepository.updateUserAppVersion.mockResolvedValue(updatedUser);
 		bcrypt.compare.mockResolvedValue(true);
-		generateAccessToken.mockReturnValue('token');
 
-		await expect(loginUser({ login: user.email, password: 'secret', appVersion: '1.2.3' }))
-			.resolves.toEqual({ accessToken: 'token', user: { id: 7, email: user.email, role: 'user' } });
-		expect(generateAccessToken).toHaveBeenCalledWith({
-			userId: 7, email: user.email, role: 'user', appVersion: '1.2.3',
+		await expect(loginUser({
+			login: activeUser.email,
+			password: 'Strong#2026',
+			appVersion: '1.2.3',
+		})).resolves.toEqual({
+			token: 'access-token',
+			refreshToken: 'refresh-token',
+			tokenType: 'Bearer',
+			expiresIn: 3600,
+			user: {
+				id: 7,
+				email: activeUser.email,
+				role: 'user',
+				status: 'active',
+				emailVerified: false,
+				appVersion: '1.2.3',
+				createdAt: activeUser.createdAt,
+			},
 		});
-		expect(recordAdminLoginAttempt).toHaveBeenCalledWith({
-			user,
-			succeeded: true,
-			ipAddress: undefined,
-			device: undefined,
+
+		expect(token.generateAccessToken).toHaveBeenCalledWith({
+			userId: 7,
+			email: activeUser.email,
+			role: 'user',
 			appVersion: '1.2.3',
 		});
+		expect(createSession).toHaveBeenCalledWith({
+			userId: 7,
+			refreshTokenHash: 'refresh-hash',
+			expiresAt: expect.any(Date),
+		});
+		expect(createSession.mock.calls[0][0]).not.toHaveProperty('refreshToken');
 	});
 
-	test('audits rejected administrator logins with request metadata', async () => {
-		const inactiveAdmin = {
-			id: 7,
-			email: 'admin@example.com',
+	test('does not clear a stored app version when login omits the optional field', async () => {
+		const user = { ...activeUser, appVersion: '1.0.0' };
+		userRepository.findUserByEmail.mockResolvedValue(user);
+		bcrypt.compare.mockResolvedValue(true);
+
+		const result = await loginUser({
+			login: user.email,
+			password: 'Strong#2026',
+		});
+
+		expect(userRepository.updateUserAppVersion).not.toHaveBeenCalled();
+		expect(token.generateAccessToken).toHaveBeenCalledWith({
+			userId: 7,
+			email: user.email,
+			role: 'user',
+		});
+		expect(result.user.appVersion).toBe('1.0.0');
+	});
+
+	test('keeps administrator audit behavior without exposing account state', async () => {
+		const admin = {
+			...activeUser,
 			role: 'admin',
 			isActive: false,
 		};
-		userRepository.findUserByEmail.mockResolvedValueOnce(inactiveAdmin);
+		userRepository.findUserByEmail.mockResolvedValue(admin);
 
 		await expect(loginUser({
-			login: inactiveAdmin.email,
-			password: 'secret',
+			login: admin.email,
+			password: 'wrong',
 			appVersion: '1.2.3',
 			ipAddress: '203.0.113.10',
 			device: 'Fitly Test',
-		})).rejects.toMatchObject({ status: 403 });
-		expect(recordAdminLoginAttempt).toHaveBeenLastCalledWith({
-			user: inactiveAdmin,
+		})).rejects.toMatchObject({
+			status: 401,
+			code: 'INVALID_CREDENTIALS',
+		});
+		expect(recordAdminLoginAttempt).toHaveBeenCalledWith({
+			user: admin,
 			succeeded: false,
 			failureReason: 'inactive_account',
 			ipAddress: '203.0.113.10',
 			device: 'Fitly Test',
 			appVersion: '1.2.3',
 		});
+	});
 
-		const activeAdmin = {
-			...inactiveAdmin,
-			isActive: true,
-			passwordHash: 'hash',
-		};
-		userRepository.findUserByEmail.mockResolvedValueOnce(activeAdmin);
-		bcrypt.compare.mockResolvedValueOnce(false);
+	test('does not issue credentials when the successful administrator audit fails', async () => {
+		const admin = { ...activeUser, role: 'admin' };
+		userRepository.findUserByEmail.mockResolvedValue(admin);
+		bcrypt.compare.mockResolvedValue(true);
+		recordAdminLoginAttempt.mockRejectedValue(new Error('audit unavailable'));
 
 		await expect(loginUser({
-			login: activeAdmin.email,
-			password: 'wrong-password',
-			appVersion: '1.2.3',
-		})).rejects.toMatchObject({ status: 401 });
-		expect(recordAdminLoginAttempt).toHaveBeenLastCalledWith({
-			user: activeAdmin,
-			succeeded: false,
-			failureReason: 'invalid_password',
-			ipAddress: undefined,
-			device: undefined,
-			appVersion: '1.2.3',
+			login: admin.email,
+			password: 'Strong#2026',
+		})).rejects.toThrow('audit unavailable');
+		expect(token.generateAccessToken).not.toHaveBeenCalled();
+	});
+
+	test('normalizes a registration email and returns the documented user DTO', async () => {
+		userRepository.findUserByEmail.mockResolvedValueOnce({ id: 1 });
+		await expect(registerUser({
+			email: 'Existing@Example.com',
+			password: 'Strong#2026',
+		})).rejects.toMatchObject({ status: 409, code: 'STATE_CONFLICT' });
+
+		userRepository.findUserByEmail.mockResolvedValueOnce(null);
+		bcrypt.hash.mockResolvedValue('hashed-password');
+		userRepository.createUser.mockResolvedValue({
+			...activeUser,
+			id: 9,
+			email: 'new@example.com',
+			appVersion: null,
+		});
+
+		const result = await registerUser({
+			email: 'New@Example.com',
+			password: 'Strong#2026',
+		});
+
+		expect(userRepository.findUserByEmail).toHaveBeenLastCalledWith('new@example.com');
+		expect(userRepository.createUser).toHaveBeenCalledWith({
+			email: 'new@example.com',
+			passwordHash: 'hashed-password',
+			role: 'user',
+			isActive: true,
+			appVersion: undefined,
+		});
+		expect(result).toMatchObject({
+			token: 'access-token',
+			refreshToken: 'refresh-token',
+			user: {
+				id: 9,
+				email: 'new@example.com',
+				status: 'active',
+			},
 		});
 	});
 
-	test('does not issue a token when a successful administrator audit fails', async () => {
-		const auditError = new Error('audit unavailable');
-		const administrator = {
+	test('loads the current user from persistence instead of returning JWT claims', async () => {
+		userRepository.findUserById.mockResolvedValue(activeUser);
+		await expect(getCurrentUser(7)).resolves.toMatchObject({
 			id: 7,
-			email: 'admin@example.com',
-			role: 'admin',
-			isActive: true,
-			passwordHash: 'hash',
-		};
-		userRepository.findUserByEmail.mockResolvedValue(administrator);
-		bcrypt.compare.mockResolvedValue(true);
-		recordAdminLoginAttempt.mockRejectedValueOnce(auditError);
+			email: activeUser.email,
+			status: 'active',
+		});
 
-		await expect(loginUser({
-			login: administrator.email,
-			password: 'Strong!Admin123',
-			appVersion: '1.2.3',
-		})).rejects.toBe(auditError);
-		expect(generateAccessToken).not.toHaveBeenCalled();
-	});
-
-	test('preserves an authentication rejection when its audit cannot be saved', async () => {
-		const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-		const administrator = {
-			id: 7,
-			email: 'admin@example.com',
-			role: 'admin',
-			isActive: true,
-			passwordHash: 'hash',
-		};
-		userRepository.findUserByEmail.mockResolvedValue(administrator);
-		bcrypt.compare.mockResolvedValue(false);
-		recordAdminLoginAttempt.mockRejectedValueOnce(new Error('audit unavailable'));
-
-		await expect(loginUser({
-			login: administrator.email,
-			password: 'wrong-password',
-			appVersion: '1.2.3',
-		})).rejects.toMatchObject({ status: 401, message: 'Invalid credentials' });
-		expect(generateAccessToken).not.toHaveBeenCalled();
-		expect(consoleError).toHaveBeenCalledWith(
-			'Failed to persist rejected administrator login audit',
-		);
-		consoleError.mockRestore();
-	});
-
-	test('rejects a duplicate email and registers a safe user with the user role', async () => {
-		userRepository.findUserByEmail.mockResolvedValueOnce({ id: 1 });
-		await expect(registerUser({ email: 'a@b.c', password: 'password', appVersion: '1.0' }))
-			.rejects.toMatchObject({ status: 409 });
-
-		userRepository.findUserByEmail.mockResolvedValueOnce(null);
-		bcrypt.hash.mockResolvedValueOnce('hashed-password');
-		userRepository.createUser.mockResolvedValueOnce({ id: 9, email: 'a@b.c', role: 'user', passwordHash: 'hidden' });
-		generateAccessToken.mockReturnValueOnce('new-token');
-
-		await expect(registerUser({ email: 'a@b.c', password: 'password', appVersion: '1.0' }))
-			.resolves.toEqual({ accessToken: 'new-token', user: { id: 9, email: 'a@b.c', role: 'user' } });
-		expect(bcrypt.hash).toHaveBeenCalledWith('password', 10);
-		expect(userRepository.createUser).toHaveBeenCalledWith(expect.objectContaining({
-			passwordHash: 'hashed-password', role: 'user', isActive: true,
-		}));
+		userRepository.findUserById.mockResolvedValueOnce(null);
+		await expect(getCurrentUser(7)).rejects.toMatchObject({ status: 401 });
 	});
 });
