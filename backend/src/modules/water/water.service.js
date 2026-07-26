@@ -1,26 +1,25 @@
 const waterRepository = require('./water.repository');
-const {
-	ensureValidUserId,
-	normalizeRequiredPositiveInt,
-} = require('../../utils/validation');
+const { ensureValidUserId } = require('../../utils/validation');
+const { toWaterDayDto } = require('./water.mapper');
 
 async function getTodayWater(userId) {
-	return waterRepository.getTodayWater(ensureValidUserId(userId));
-}
-
-async function addWater(userId, amountMl) {
-	return waterRepository.addWater(
+	const water = await waterRepository.getTodayWater(
 		ensureValidUserId(userId),
-		normalizeRequiredPositiveInt(amountMl, 'Amount'),
 	);
+
+	return toWaterDayDto(water);
 }
 
-async function resetTodayWater(userId) {
-	return waterRepository.resetTodayWater(ensureValidUserId(userId));
+async function setTodayWater(userId, amountMl) {
+	const water = await waterRepository.setTodayWater(
+		ensureValidUserId(userId),
+		amountMl,
+	);
+
+	return toWaterDayDto(water);
 }
 
 module.exports = {
 	getTodayWater,
-	addWater,
-	resetTodayWater,
+	setTodayWater,
 };

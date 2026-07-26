@@ -1,23 +1,22 @@
-const repo = require('./daily.repository');
-const { ApiError } = require('../../utils/api-error');
-const {
-	ensureValidUserId,
-	normalizeOptionalNonNegativeInt,
-} = require('../../utils/validation');
+const dailyRepository = require('./daily.repository');
+const { ensureValidUserId } = require('../../utils/validation');
+const { toDailyTrackingDto } = require('./daily.mapper');
 
 async function getToday(userId) {
-	return repo.getToday(ensureValidUserId(userId));
+	const daily = await dailyRepository.getToday(ensureValidUserId(userId));
+	return toDailyTrackingDto(daily);
 }
 
 async function updateToday(userId, data) {
-	if (!data || typeof data !== 'object' || Array.isArray(data)) {
-		throw new ApiError(400, 'Daily data is required');
-	}
+	const daily = await dailyRepository.upsertToday(
+		ensureValidUserId(userId),
+		{
+			steps: data.steps,
+			calories: data.calories,
+		},
+	);
 
-	return repo.upsertToday(ensureValidUserId(userId), {
-		steps: normalizeOptionalNonNegativeInt(data.steps, 'Steps'),
-		calories: normalizeOptionalNonNegativeInt(data.calories, 'Calories'),
-	});
+	return toDailyTrackingDto(daily);
 }
 
 module.exports = {

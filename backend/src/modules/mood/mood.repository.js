@@ -2,8 +2,7 @@ const { pool } = require('../../config/db');
 
 const moodColumns = `
 	id,
-	user_id AS "userId",
-	mood_date AS "moodDate",
+	mood_date::text AS date,
 	mood_score AS "moodScore",
 	mood_label AS "moodLabel",
 	mood_emoji AS "moodEmoji",
@@ -40,10 +39,10 @@ async function upsertTodayMood(userId, moodData) {
 		 RETURNING ${moodColumns}`,
 		[
 			userId,
-			moodData.moodScore ?? null,
-			moodData.moodLabel || null,
-			moodData.moodEmoji || null,
-			moodData.note || null,
+			moodData.moodScore,
+			moodData.moodLabel ?? null,
+			moodData.moodEmoji ?? null,
+			moodData.note ?? null,
 		],
 	);
 
