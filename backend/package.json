@@ -4,7 +4,17 @@
 	"main": "src/server.js",
 	"scripts": {
 		"start": "node src/server.js",
-		"dev": "node src/server.js"
+		"dev": "node src/server.js",
+		"migrate:create": "node-pg-migrate create --migration-file-language js",
+		"migrate:up": "node-pg-migrate up",
+		"migrate:down": "node-pg-migrate down",
+		"migrate:test": "node-pg-migrate up --database-url-var TEST_DATABASE_URL",
+		"migrate:test:down": "node-pg-migrate down 8 --database-url-var TEST_DATABASE_URL",
+		"test": "jest --runInBand",
+		"test:integration": "npm run migrate:test && jest --runInBand --config jest.integration.config.js",
+		"test:all": "npm test && npm run test:integration",
+		"test:watch": "jest --watch",
+		"test:coverage": "jest --runInBand --coverage"
 	},
 	"dependencies": {
 		"bcryptjs": "^2.4.3",
@@ -12,6 +22,11 @@
 		"dotenv": "^16.4.5",
 		"express": "^5.2.1",
 		"jsonwebtoken": "^9.0.3",
-		"mssql": "^11.0.1"
+		"pg": "^8.22.0"
+	},
+	"devDependencies": {
+		"jest": "^29.7.0",
+		"node-pg-migrate": "^8.0.4",
+		"supertest": "^7.1.3"
 	}
 }

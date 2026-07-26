@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 
-const env = require('./config/env');
 const authRoutes = require('./modules/auth/auth.routes');
 const goalsRoutes = require('./modules/goals/goals.routes');
 const profileRoutes = require('./modules/profile/profile.routes');
@@ -43,6 +42,13 @@ app.use('/api/v1/sleep', sleepRoutes);
 app.use('/api/v1/mood', moodRoutes);
 app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/daily', dailyRoutes);
+
+app.use((req, res) => {
+	res.status(404).json({
+		success: false,
+		message: 'Route not found',
+	});
+});
 
 app.use(errorMiddleware);
 

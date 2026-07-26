@@ -1,109 +1,74 @@
-const { sql, poolPromise } = require('../../config/db');
+const { pool } = require('../../config/db');
+
+const profileColumns = `
+	id,
+	user_id AS "userId",
+	first_name AS "firstName",
+	birth_date AS "birthDate",
+	gender,
+	height_cm::double precision AS "heightCm",
+	weight_kg::double precision AS "weightKg",
+	updated_at AS "updatedAt"
+`;
 
 async function findProfileByUserId(userId) {
-        const pool = await poolPromise;
+	const result = await pool.query(
+		`SELECT ${profileColumns}
+		 FROM profiles
+		 WHERE user_id = $1
+		 LIMIT 1`,
+		[userId],
+	);
 
-        const result = await pool
-                .request()
-                .input('userId', sql.Int, userId)
-                .query(`
-                        SELECT TOP 1
-                                id,
-                                user_id AS userId,
-                                first_name AS firstName,
-                                birth_date AS birthDate,
-                                gender,
-                                height_cm AS heightCm,
-                                weight_kg AS weightKg,
-                                updated_at AS updatedAt
-                        FROM Profiles
-                        WHERE user_id = @userId
-                `);
-
-        return result.recordset[0] || null;
+	return result.rows[0] || null;
 }
 
 async function createProfile(profileData) {
-        const pool = await poolPromise;
+	const result = await pool.query(
+		`INSERT INTO profiles (
+			user_id, first_name, birth_date, gender, height_cm, weight_kg
+		 )
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING ${profileColumns}`,
+		[
+			profileData.userId,
+			profileData.firstName || null,
+			profileData.birthDate || null,
+			profileData.gender || null,
+			profileData.heightCm ?? null,
+			profileData.weightKg ?? null,
+		],
+	);
 
-        const result = await pool
-                .request()
-                .input('userId', sql.Int, profileData.userId)
-                .input('firstName', sql.NVarChar(100), profileData.firstName || null)
-                .input('birthDate', sql.Date, profileData.birthDate || null)
-                .input('gender', sql.NVarChar(20), profileData.gender || null)
-                .input('heightCm', sql.Decimal(5, 2), profileData.heightCm || null)
-                .input('weightKg', sql.Decimal(5, 2), profileData.weightKg || null)
-                .query(`
-                        INSERT INTO Profiles (
-                                user_id,
-                                first_name,
-                                birth_date,
-                                gender,
-                                height_cm,
-                                weight_kg,
-                                updated_at
-                        )
-                        OUTPUT
-                                INSERTED.id,
-                                INSERTED.user_id AS userId,
-                                INSERTED.first_name AS firstName,
-                                INSERTED.birth_date AS birthDate,
-                                INSERTED.gender,
-                                INSERTED.height_cm AS heightCm,
-                                INSERTED.weight_kg AS weightKg,
-                                INSERTED.updated_at AS updatedAt
-                        VALUES (
-                                @userId,
-                                @firstName,
-                                @birthDate,
-                                @gender,
-                                @heightCm,
-                                @weightKg,
-                                GETDATE()
-                        )
-                `);
-
-        return result.recordset[0];
+	return result.rows[0];
 }
 
 async function updateProfileByUserId(userId, updateData) {
-        const pool = await poolPromise;
+	const result = await pool.query(
+		`UPDATE profiles
+		 SET first_name = $2,
+			 birth_date = $3,
+			 gender = $4,
+			 height_cm = $5,
+			 weight_kg = $6,
+			 updated_at = CURRENT_TIMESTAMP
+		 WHERE user_id = $1
+		 RETURNING ${profileColumns}`,
+		[
+			userId,
+			updateData.firstName || null,
+			updateData.birthDate || null,
+			updateData.gender || null,
+			updateData.heightCm ?? null,
+			updateData.weightKg ?? null,
+		],
+	);
 
-        const result = await pool
-                .request()
-                .input('userId', sql.Int, userId)
-                .input('firstName', sql.NVarChar(100), updateData.firstName || null)
-                .input('birthDate', sql.Date, updateData.birthDate || null)
-                .input('gender', sql.NVarChar(20), updateData.gender || null)
-                .input('heightCm', sql.Decimal(5, 2), updateData.heightCm || null)
-                .input('weightKg', sql.Decimal(5, 2), updateData.weightKg || null)
-                .query(`
-                        UPDATE Profiles
-                        SET
-                                first_name = @firstName,
-                                birth_date = @birthDate,
-                                gender = @gender,
-                                height_cm = @heightCm,
-                                weight_kg = @weightKg,
-                                updated_at = GETDATE()
-                        OUTPUT
-                                INSERTED.id,
-                                INSERTED.user_id AS userId,
-                                INSERTED.first_name AS firstName,
-                                INSERTED.birth_date AS birthDate,
-                                INSERTED.gender,
-                                INSERTED.height_cm AS heightCm,
-                                INSERTED.weight_kg AS weightKg,
-                                INSERTED.updated_at AS updatedAt
-                        WHERE user_id = @userId
-                `);
-
-        return result.recordset[0] || null;
+	return result.rows[0] || null;
 }
 
 module.exports = {
-        findProfileByUserId,
-        createProfile,
-        updateProfileByUserId,
+	findProfileByUserId,
+	createProfile,
+	updateProfileByUserId,
 };

@@ -1,0 +1,6275 @@
+openapi: 3.0.3
+info:
+  title: Fitly API
+  version: 1.0.0
+  license:
+    name: Internal educational project; no license granted
+  description: |
+    Контракт REST API мобильного приложения Fitly. Это единый источник
+    истины для backend, frontend, тестов, mock-сервера и документации. Если код
+    расходится с этим файлом, исправляется код либо контракт меняется отдельным
+    согласованным изменением до реализации.
+
+    Источники требований: SRS Fitly, карточки FITLY-001—FITLY-077 и фактический
+    контракт текущего приложения. При конфликте сохранена обратная совместимость
+    существующих `/api/v1` endpoints, а бизнес-правила уточнены по SRS и Trello.
+
+    ## 1. Общие правила
+
+    * Запросы и JSON-ответы используют `Content-Type: application/json`.
+    * Имена JSON-полей используют `camelCase`. Frontend не должен самостоятельно
+      переименовывать поля в `snake_case` и обратно.
+    * Поле, отсутствующее в JSON, и поле со значением `null` — разные состояния.
+      `null` разрешён только там, где схема явно содержит `nullable: true`.
+    * Неизвестные поля нельзя отправлять в объекты с `additionalProperties: false`.
+    * Даты без времени передаются как `YYYY-MM-DD`, моменты времени — в формате
+      RFC 3339, например `2026-07-16T14:30:00Z`.
+    * Сервер хранит моменты времени в UTC. Дневные границы и отображение считаются
+      в часовом поясе из настроек пользователя.
+    * Идентификаторы сущностей — положительные 64-битные целые числа.
+    * Пользователь получает доступ только к собственным данным. `userId` не
+      передаётся в пользовательских request body и определяется по access JWT.
+    * Удаление возвращает JSON-подтверждение `{ "success": true, "data":
+      { "deleted": true } }`, а не пустой ответ `204`.
+    * Конкретная схема операции важнее общих соглашений. Например, совместимый
+      `PUT /profile` обновляет только переданные поля, хотя обычно `PUT` означает
+      полную замену ресурса.
+
+    ## 2. Авторизация и токены
+
+    По умолчанию все операции защищены схемой `bearerAuth`. Публичные операции
+    (`register`, `login`, `refresh`, восстановление пароля и health check) явно
+    содержат `security: []`.
+
+    Access JWT передаётся только в HTTP-заголовке:
+
+    ```http
+    Authorization: Bearer <token>
+    ```
+
+    После регистрации или входа сервер возвращает `data.token`,
+    `data.refreshToken`, `data.tokenType` и `data.expiresIn`. Имя `token` означает
+    access token и сохранено для совместимости с существующим приложением.
+    Refresh-токен не используется как Bearer-токен: он отправляется только в body
+    операций `/auth/refresh` и завершения соответствующей сессии.
+
+    Если защищённая операция вернула `401`, frontend может один раз вызвать
+    `/auth/refresh`, сохранить новую пару токенов и повторить исходный запрос.
+    Несколько параллельных `401` должны ожидать один общий refresh-запрос. Если
+    refresh также завершился ошибкой, frontend удаляет локальные токены и
+    переводит пользователя на экран входа. Бесконечно повторять запрос нельзя.
+
+    ## 3. Успешный ответ
+
+    Все успешные JSON-ответы используют envelope:
+
+    ```json
+    {
+      "success": true,
+      "data": {
+        "id": 42
+      },
+      "meta": {
+        "requestId": "req_01J0Y7Y0QZ5M4X2D7F8A"
+      }
+    }
+    ```
+
+    * `success` всегда равен `true`.
+    * `data` содержит полезную нагрузку конкретной операции. Её структура
+      определяется схемой ответа этой операции.
+    * `meta` содержит служебную информацию и может отсутствовать, если операция
+      не объявляет её обязательной.
+    * В списках `meta` обязателен и дополнительно содержит `page`, `pageSize`,
+      `total` и `totalPages`.
+
+    HTTP-код остаётся значимым: `200` — успешное чтение/изменение, `201` — ресурс
+    создан, `202` — асинхронная задача принята и ещё не завершена.
+
+    ## 4. Ошибка
+
+    Все ошибки API с JSON-body используют один envelope:
+
+    ```json
+    {
+      "success": false,
+      "message": "Проверьте введённые данные",
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "requestId": "req_01J0Y7Y0QZ5M4X2D7F8A",
+        "details": [
+          {
+            "field": "password",
+            "code": "PASSWORD_TOO_WEAK",
+            "message": "Пароль не соответствует требованиям"
+          }
+        ]
+      }
+    }
+    ```
+
+    * `success` всегда равен `false`.
+    * `message` — безопасное человекочитаемое сообщение. Его можно показать
+      пользователю как общий fallback, но нельзя использовать для ветвления
+      логики: текст может измениться или быть локализован.
+    * `error.code` — стабильный машинный код в `UPPER_SNAKE_CASE`. Frontend
+      принимает решения по HTTP-статусу и этому коду.
+    * `error.requestId` — идентификатор конкретного HTTP-запроса. Frontend
+      сохраняет или показывает его при диагностике, backend пишет тот же ID во
+      все логи данного запроса.
+    * `error.details` — необязательный массив уточнений. Обычно применяется для
+      ошибок валидации нескольких полей.
+    * `details[].field` — путь к полю запроса в `camelCase`, например `email` или
+      `goals[0].targetValue`. Может отсутствовать у ошибки, не связанной с полем.
+    * `details[].code` — необязательный машинный код конкретной ошибки поля.
+    * `details[].message` — безопасное сообщение о конкретной проблеме.
+
+    Backend не должен возвращать stack trace, SQL, имя таблицы, внутреннее имя
+    класса, токен или другое секретное значение ни в `message`, ни в `details`.
+
+    Основные HTTP-статусы:
+
+    * `400` — неправильный формат или валидация входных данных;
+    * `401` — access token отсутствует, истёк или недействителен;
+    * `403` — пользователь распознан, но не имеет права или Premium-доступа;
+    * `404` — ресурс не найден либо не принадлежит текущему пользователю;
+    * `409` — конфликт с текущим состоянием или уникальностью данных;
+    * `410` — ссылка, код или ресурс окончательно истёк;
+    * `413` — файл или тело запроса превышает допустимый размер;
+    * `429` — превышен лимит; учитывается заголовок `Retry-After`;
+    * `503` — внешняя зависимость или сервис временно недоступны.
+
+    ## 5. Request ID и логирование
+
+    Request ID создаётся самым первым middleware до авторизации и валидации.
+    Для успешного JSON-ответа он может находиться в `meta.requestId`, для ошибки
+    обязательно возвращается в `error.requestId`. Один и тот же ID используется
+    во всех структурированных логах запроса вместе с методом, путём, HTTP-кодом,
+    длительностью и, после успешной авторизации, `userId`.
+
+    Пароли, JWT, refresh-токены, секреты и платёжные данные не логируются.
+
+    ## 6. Правила frontend
+
+    * Использовать сгенерированные из OpenAPI типы и единый HTTP-клиент.
+    * Bearer access token добавлять interceptor-ом, а не из каждого экрана.
+    * На `2xx` читать полезные данные из `data`.
+    * На `400` связывать `error.details` с полями формы.
+    * На `401` выполнять не более одной попытки refresh и повтора запроса.
+    * На остальных ошибках обрабатывать `error.code`, а `message` использовать
+      как текст для пользователя.
+    * При сообщении об ошибке разработчикам прикладывать `error.requestId`.
+
+    ## 7. Правила backend
+
+    Порядок обработки: request ID и логирование → разбор Bearer-токена →
+    проверка роли → валидация параметров/body → бизнес-логика → mapping DTO →
+    envelope ответа. Все исключения проходят через единый error handler и
+    преобразуются в описанную выше структуру.
+
+    Медицинские рекомендации не входят в область ответственности API. Ответы
+    AI имеют информационный характер и не заменяют консультацию специалиста.
+  contact:
+    name: Fitly development team
+servers:
+  - url: https://api.fitlyapp.ru
+    description: Production
+  - url: http://localhost:3000
+    description: Local development
+tags:
+  - name: System
+    description: Состояние сервиса.
+  - name: Auth
+    description: Регистрация, сессии и безопасность аккаунта.
+  - name: Profile
+    description: Личные и антропометрические данные.
+  - name: Goals
+    description: Персональные цели и их состояния.
+  - name: Daily tracking
+    description: Совместимые singleton-endpoints текущего приложения.
+  - name: Health
+    description: История веса, сна, воды и шагов.
+  - name: Diary
+    description: Быстрые и расширенные записи самочувствия.
+  - name: Nutrition
+    description: Продукты, приёмы пищи и КБЖУ.
+  - name: Workouts
+    description: Каталог, таймер, журнал и календарь тренировок.
+  - name: Achievements
+    description: Справочник наград и прогресс пользователя.
+  - name: Settings
+    description: Интерфейс, локаль, быстрые действия и напоминания.
+  - name: Notifications
+    description: Push-устройства и история уведомлений.
+  - name: Analytics
+    description: Агрегаты и временные ряды для графиков.
+  - name: Exports
+    description: Асинхронное формирование CSV и PDF.
+  - name: Support
+    description: Обращения пользователя и переписка с поддержкой.
+  - name: AI
+    description: Premium-функции ИИ с обязательным предупреждением.
+  - name: Subscription
+    description: Тарифы, пробный период и проверка покупок.
+  - name: Admin
+    description: Методы только для роли администратора.
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: Проверить доступность API и базы данных
+      security: []
+      x-requirements: [FITLY-029]
+      responses:
+        '200':
+          description: API и база данных доступны
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HealthStatus'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Зарегистрироваться и автоматически войти
+      description: Email уникален без учёта регистра.
+      security: []
+      x-requirements: [FR-101, FR-104, FITLY-006, FITLY-019, FITLY-033, FITLY-035]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Аккаунт создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Войти по email и паролю
+      description: Поле `login` содержит email и сохранено для совместимости.
+      security: []
+      x-requirements: [FR-102, FR-1102, FITLY-007, FITLY-016, FITLY-021, FITLY-035]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Вход выполнен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Неверный email или пароль; конкретное поле не раскрывается
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Неверный email или пароль
+                error:
+                  code: INVALID_CREDENTIALS
+                  requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshTokens
+      summary: Обновить пару токенов
+      description: Refresh-токен одноразово ротируется; предыдущий становится недействительным.
+      security: []
+      x-requirements: [FITLY-028, FITLY-053]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: Токены обновлены
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AuthTokens'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Выйти и инвалидировать refresh-токен
+      x-requirements: [FR-105, FITLY-053]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/logout-all:
+    post:
+      tags: [Auth]
+      operationId: logoutAll
+      summary: Завершить все сессии пользователя
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentUser
+      summary: Получить текущего пользователя
+      x-requirements: [FITLY-028]
+      responses:
+        '200':
+          description: Текущий пользователь
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/password-reset/request:
+    post:
+      tags: [Auth]
+      operationId: requestPasswordReset
+      summary: Запросить ссылку восстановления пароля
+      description: Всегда возвращает одинаковый ответ, чтобы не раскрывать наличие email.
+      security: []
+      x-requirements: [FR-103, FITLY-032, FITLY-034]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      operationId: confirmPasswordReset
+      summary: Установить новый пароль по одноразовому токену
+      security: []
+      x-requirements: [FR-103, FR-104, FITLY-034]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '410':
+          description: Токен просрочен или уже использован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/password:
+    patch:
+      tags: [Auth]
+      operationId: changePassword
+      summary: Изменить пароль
+      description: После изменения пароля все остальные сессии завершаются.
+      x-requirements: [FR-303, FR-104, FITLY-060]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/auth/email-change/request:
+    post:
+      tags: [Auth]
+      operationId: requestEmailChange
+      summary: Запросить изменение email
+      x-requirements: [FR-302, FITLY-011]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailChangeRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/auth/email-change/confirm:
+    post:
+      tags: [Auth]
+      operationId: confirmEmailChange
+      summary: Подтвердить новый email
+      x-requirements: [FR-302, FITLY-011]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  minLength: 20
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '410':
+          description: Токен просрочен или уже использован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/account:
+    delete:
+      tags: [Auth]
+      operationId: deleteAccount
+      summary: Безвозвратно удалить аккаунт и персональные данные
+      x-requirements: [FR-201, FITLY-018]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, confirmation]
+              properties:
+                password:
+                  type: string
+                  format: password
+                confirmation:
+                  type: string
+                  enum: [DELETE]
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/profile:
+    get:
+      tags: [Profile]
+      operationId: getProfile
+      summary: Получить профиль и актуальные антропометрические данные
+      x-requirements: [FR-301, FITLY-010, FITLY-068]
+      responses:
+        '200':
+          description: Профиль
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Profile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Profile]
+      operationId: updateProfile
+      summary: Частично обновить профиль
+      description: |
+        Несмотря на `PUT`, поля необязательны и обновляются частично — это
+        сохранённое поведение текущего клиента. Email меняется отдельным
+        подтверждаемым сценарием.
+      x-requirements: [FR-302, FITLY-011]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Обновлённый профиль
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Profile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/goals:
+    get:
+      tags: [Goals]
+      operationId: listGoals
+      summary: Получить цели пользователя
+      x-requirements: [FR-901, FR-902, FITLY-045]
+      responses:
+        '200':
+          description: Список целей
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        required: [goals]
+                        properties:
+                          goals:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Goal'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Goals]
+      operationId: replaceGoals
+      summary: Полностью заменить набор целей
+      description: Отсутствующие ранее цели отменяются; это replace-all операция.
+      x-requirements: [FR-901, FR-902, FITLY-045]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplaceGoalsRequest'
+      responses:
+        '200':
+          description: Актуальный список целей
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        required: [goals]
+                        properties:
+                          goals:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/goals/{goalId}:
+    parameters:
+      - $ref: '#/components/parameters/GoalId'
+    patch:
+      tags: [Goals]
+      operationId: updateGoal
+      summary: Изменить одну цель
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGoalRequest'
+      responses:
+        '200':
+          description: Обновлённая цель
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/goals/{goalId}/complete:
+    parameters:
+      - $ref: '#/components/parameters/GoalId'
+    post:
+      tags: [Goals]
+      operationId: completeGoal
+      summary: Отметить цель выполненной
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/goals/{goalId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/GoalId'
+    post:
+      tags: [Goals]
+      operationId: cancelGoal
+      summary: Отменить цель
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/water/today:
+    get:
+      tags: [Daily tracking]
+      operationId: getTodayWater
+      summary: Получить потребление воды за сегодня
+      x-requirements: [FR-503, FITLY-037]
+      responses:
+        '200':
+          description: Сумма воды за локальную дату пользователя
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WaterDay'
+    put:
+      tags: [Daily tracking]
+      operationId: setTodayWater
+      summary: Установить итоговый объём воды за сегодня
+      description: Совместимый singleton-endpoint; значение заменяет текущий итог дня.
+      x-requirements: [FR-503, FITLY-037]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaterTodayRequest'
+      responses:
+        '200':
+          description: Обновлённый итог дня
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WaterDay'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/sleep/today:
+    get:
+      tags: [Daily tracking]
+      operationId: getTodaySleep
+      summary: Получить запись сна за сегодня
+      x-requirements: [FR-502, FITLY-036]
+      responses:
+        '200':
+          description: Запись сна или `null`
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        allOf:
+                          - $ref: '#/components/schemas/SleepEntry'
+                        nullable: true
+    put:
+      tags: [Daily tracking]
+      operationId: upsertTodaySleep
+      summary: Создать или заменить запись сна за сегодня
+      x-requirements: [FR-502, FITLY-036]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepTodayRequest'
+      responses:
+        '200':
+          description: Сохранённая запись сна
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SleepEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/mood/today:
+    get:
+      tags: [Daily tracking]
+      operationId: getTodayMood
+      summary: Получить быструю отметку самочувствия за сегодня
+      x-requirements: [FR-401, FITLY-013]
+      responses:
+        '200':
+          description: Отметка или `null`
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        allOf:
+                          - $ref: '#/components/schemas/MoodEntry'
+                        nullable: true
+    put:
+      tags: [Daily tracking]
+      operationId: upsertTodayMood
+      summary: Создать или заменить быструю отметку за сегодня
+      description: На одну локальную дату допускается одна основная быстрая отметка.
+      x-requirements: [FR-401, FITLY-013]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoodTodayRequest'
+      responses:
+        '200':
+          description: Сохранённая отметка
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MoodEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/favorites:
+    get:
+      tags: [Daily tracking]
+      operationId: getFavorites
+      summary: Получить избранные показатели профиля
+      responses:
+        '200':
+          description: Настройки видимости показателей
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Favorites'
+    put:
+      tags: [Daily tracking]
+      operationId: updateFavorites
+      summary: Обновить избранные показатели
+      description: Для совместимости отсутствующие поля получают значение `true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FavoritesRequest'
+      responses:
+        '200':
+          description: Сохранённые настройки
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Favorites'
+
+  /api/v1/daily/today:
+    get:
+      tags: [Daily tracking]
+      operationId: getTodayDailyTracking
+      summary: Получить шаги и калории за сегодня
+      x-requirements: [FR-801, FR-1004, FITLY-010]
+      responses:
+        '200':
+          description: Сводка текущего дня
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DailyTracking'
+    put:
+      tags: [Daily tracking]
+      operationId: upsertTodayDailyTracking
+      summary: Обновить шаги и калории за сегодня
+      description: Упрощённый учебный ввод без контракта с носимыми устройствами.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DailyTrackingRequest'
+      responses:
+        '200':
+          description: Обновлённая сводка
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DailyTracking'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/health/weight:
+    get:
+      tags: [Health]
+      operationId: listWeightEntries
+      summary: Получить историю веса
+      x-requirements: [FR-501, FR-1003, FITLY-012]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: История веса в порядке убывания даты
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WeightEntry'
+    post:
+      tags: [Health]
+      operationId: createWeightEntry
+      summary: Добавить запись веса
+      x-requirements: [FR-501, FITLY-012]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightEntryRequest'
+      responses:
+        '201':
+          description: Запись создана
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WeightEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/health/weight/{entryId}:
+    parameters:
+      - $ref: '#/components/parameters/EntryId'
+    get:
+      tags: [Health]
+      operationId: getWeightEntry
+      summary: Получить запись веса
+      responses:
+        '200':
+          description: Запись веса
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WeightEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Health]
+      operationId: updateWeightEntry
+      summary: Изменить запись веса
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeightEntryRequest'
+      responses:
+        '200':
+          description: Обновлённая запись
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WeightEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Health]
+      operationId: deleteWeightEntry
+      summary: Удалить запись веса
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/health/sleep:
+    get:
+      tags: [Health]
+      operationId: listSleepEntries
+      summary: Получить историю сна
+      x-requirements: [FR-502, FR-1005, FITLY-036]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: История сна
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SleepEntry'
+    post:
+      tags: [Health]
+      operationId: createSleepEntry
+      summary: Добавить запись сна
+      x-requirements: [FR-502, FITLY-036]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepEntryRequest'
+      responses:
+        '201':
+          description: Запись создана
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SleepEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/health/sleep/{entryId}:
+    parameters:
+      - $ref: '#/components/parameters/EntryId'
+    patch:
+      tags: [Health]
+      operationId: updateSleepEntry
+      summary: Изменить запись сна
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SleepEntryRequest'
+      responses:
+        '200':
+          description: Обновлённая запись
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SleepEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Health]
+      operationId: deleteSleepEntry
+      summary: Удалить запись сна
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/health/water:
+    get:
+      tags: [Health]
+      operationId: listWaterEntries
+      summary: Получить историю приёмов воды
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Приёмы воды
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WaterEntry'
+    post:
+      tags: [Health]
+      operationId: addWater
+      summary: Добавить выпитый объём воды
+      x-requirements: [FR-503, FITLY-037]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaterEntryRequest'
+      responses:
+        '201':
+          description: Приём воды добавлен, итог дня пересчитан
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        required: [entry, day]
+                        properties:
+                          entry:
+                            $ref: '#/components/schemas/WaterEntry'
+                          day:
+                            $ref: '#/components/schemas/WaterDay'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/health/water/{entryId}:
+    parameters:
+      - $ref: '#/components/parameters/EntryId'
+    patch:
+      tags: [Health]
+      operationId: updateWaterEntry
+      summary: Изменить приём воды
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WaterEntryRequest'
+      responses:
+        '200':
+          description: Обновлённый приём воды
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WaterEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Health]
+      operationId: deleteWaterEntry
+      summary: Удалить приём воды
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/health/steps:
+    get:
+      tags: [Health]
+      operationId: listStepEntries
+      summary: Получить шаги по дням
+      description: Упрощённый учебный ресурс; интеграция с устройствами не контрактуется.
+      x-requirements: [FR-801, FR-1004]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Шаги по дням
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/StepEntry'
+
+  /api/v1/health/steps/{date}:
+    parameters:
+      - $ref: '#/components/parameters/DatePath'
+    put:
+      tags: [Health]
+      operationId: upsertStepsForDate
+      summary: Установить количество шагов за дату
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [steps]
+              properties:
+                steps:
+                  type: integer
+                  minimum: 0
+                  maximum: 200000
+      responses:
+        '200':
+          description: Сохранённая запись
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/StepEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/diary/entries:
+    get:
+      tags: [Diary]
+      operationId: listDiaryEntries
+      summary: Получить записи дневника состояния
+      x-requirements: [FR-402, FR-1002, FITLY-040, FITLY-061]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: moodScore
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Записи в обратном хронологическом порядке
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DiaryEntry'
+    post:
+      tags: [Diary]
+      operationId: createDiaryEntry
+      summary: Создать расширенную запись дневника
+      x-requirements: [FR-402, FITLY-061]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiaryEntryRequest'
+      responses:
+        '201':
+          description: Запись создана
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DiaryEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/diary/entries/{entryId}:
+    parameters:
+      - $ref: '#/components/parameters/EntryId'
+    get:
+      tags: [Diary]
+      operationId: getDiaryEntry
+      summary: Получить запись дневника
+      responses:
+        '200':
+          description: Запись дневника
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DiaryEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Diary]
+      operationId: updateDiaryEntry
+      summary: Изменить запись дневника
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiaryEntryRequest'
+      responses:
+        '200':
+          description: Обновлённая запись
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/DiaryEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Diary]
+      operationId: deleteDiaryEntry
+      summary: Удалить запись дневника
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/nutrition/products:
+    get:
+      tags: [Nutrition]
+      operationId: searchFoodProducts
+      summary: Найти системные и собственные продукты
+      x-requirements: [FR-601, FITLY-038]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [all, system, custom]
+            default: all
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Каталог продуктов
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/FoodProduct'
+    post:
+      tags: [Nutrition]
+      operationId: createCustomFoodProduct
+      summary: Создать собственный продукт
+      x-requirements: [FR-601, FITLY-038]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodProductRequest'
+      responses:
+        '201':
+          description: Собственный продукт создан
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/nutrition/products/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    patch:
+      tags: [Nutrition]
+      operationId: updateCustomFoodProduct
+      summary: Изменить собственный продукт
+      description: Системный продукт пользователь изменить не может.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodProductRequest'
+      responses:
+        '200':
+          description: Обновлённый продукт
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FoodProduct'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Nutrition]
+      operationId: deleteCustomFoodProduct
+      summary: Удалить собственный продукт
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/nutrition/meals:
+    get:
+      tags: [Nutrition]
+      operationId: listMeals
+      summary: Получить приёмы пищи
+      x-requirements: [FR-601, FR-602, FITLY-038, FITLY-039, FITLY-041]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: mealType
+          in: query
+          schema:
+            $ref: '#/components/schemas/MealType'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Приёмы пищи
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MealEntry'
+    post:
+      tags: [Nutrition]
+      operationId: createMeal
+      summary: Добавить приём пищи и рассчитать КБЖУ
+      x-requirements: [FR-601, FR-602, FITLY-038, FITLY-039]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealEntryRequest'
+      responses:
+        '201':
+          description: Приём пищи создан
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MealEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/nutrition/meals/{mealId}:
+    parameters:
+      - $ref: '#/components/parameters/MealId'
+    get:
+      tags: [Nutrition]
+      operationId: getMeal
+      summary: Получить приём пищи
+      responses:
+        '200':
+          description: Приём пищи
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MealEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Nutrition]
+      operationId: updateMeal
+      summary: Изменить приём пищи и пересчитать КБЖУ
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealEntryRequest'
+      responses:
+        '200':
+          description: Обновлённый приём пищи
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MealEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Nutrition]
+      operationId: deleteMeal
+      summary: Удалить приём пищи и пересчитать итог дня
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/nutrition/daily/{date}:
+    parameters:
+      - $ref: '#/components/parameters/DatePath'
+    get:
+      tags: [Nutrition]
+      operationId: getNutritionDay
+      summary: Получить КБЖУ и приёмы пищи за день
+      x-requirements: [FR-602, FITLY-039]
+      responses:
+        '200':
+          description: Дневная сводка питания
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NutritionDay'
+
+  /api/v1/workouts/catalog:
+    get:
+      tags: [Workouts]
+      operationId: listWorkoutCatalog
+      summary: Получить каталог тренировок
+      x-requirements: [FR-701, FR-702, FITLY-008, FITLY-064]
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkoutType'
+        - name: bodyArea
+          in: query
+          schema:
+            $ref: '#/components/schemas/BodyArea'
+        - name: intensity
+          in: query
+          schema:
+            $ref: '#/components/schemas/Intensity'
+        - name: maxDurationMinutes
+          in: query
+          schema:
+            type: integer
+            minimum: 5
+            maximum: 240
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Подходящие тренировки
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WorkoutSummary'
+
+  /api/v1/workouts/catalog/{workoutId}:
+    parameters:
+      - $ref: '#/components/parameters/WorkoutId'
+    get:
+      tags: [Workouts]
+      operationId: getWorkout
+      summary: Получить тренировку с упражнениями и инструкциями
+      x-requirements: [FR-702, FITLY-008, FITLY-009]
+      responses:
+        '200':
+          description: Тренировка
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workout'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/exercises/{exerciseId}:
+    parameters:
+      - $ref: '#/components/parameters/ExerciseId'
+    get:
+      tags: [Workouts]
+      operationId: getExercise
+      summary: Получить подробную инструкцию упражнения
+      x-requirements: [FR-702, FITLY-009]
+      responses:
+        '200':
+          description: Упражнение
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Exercise'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/workout-sessions:
+    get:
+      tags: [Workouts]
+      operationId: listWorkoutSessions
+      summary: Получить журнал тренировок
+      x-requirements: [FR-703, FR-1001, FITLY-043, FITLY-044]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkoutSessionStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Журнал тренировок
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WorkoutSession'
+    post:
+      tags: [Workouts]
+      operationId: startWorkoutSession
+      summary: Начать тренировочную сессию
+      description: У пользователя может быть только одна активная сессия.
+      x-requirements: [FR-703, FITLY-043]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartWorkoutSessionRequest'
+      responses:
+        '201':
+          description: Таймер сессии запущен
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/workout-sessions/active:
+    get:
+      tags: [Workouts]
+      operationId: getActiveWorkoutSession
+      summary: Получить активную или приостановленную сессию
+      responses:
+        '200':
+          description: Активная сессия или `null`
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        allOf:
+                          - $ref: '#/components/schemas/WorkoutSession'
+                        nullable: true
+
+  /api/v1/workout-sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Workouts]
+      operationId: getWorkoutSession
+      summary: Получить тренировочную сессию
+      responses:
+        '200':
+          description: Сессия
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/workout-sessions/{sessionId}/pause:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Workouts]
+      operationId: pauseWorkoutSession
+      summary: Приостановить таймер
+      x-requirements: [FITLY-043]
+      responses:
+        '200':
+          description: Приостановленная сессия
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/workout-sessions/{sessionId}/resume:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Workouts]
+      operationId: resumeWorkoutSession
+      summary: Продолжить таймер
+      x-requirements: [FITLY-043]
+      responses:
+        '200':
+          description: Продолженная сессия
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/workout-sessions/{sessionId}/finish:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Workouts]
+      operationId: finishWorkoutSession
+      summary: Завершить тренировку и сохранить результат
+      x-requirements: [FR-703, FITLY-043, FITLY-044]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FinishWorkoutSessionRequest'
+      responses:
+        '200':
+          description: Завершённая сессия; достижения и аналитика пересчитаны
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/workout-sessions/{sessionId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    post:
+      tags: [Workouts]
+      operationId: cancelWorkoutSession
+      summary: Отменить активную сессию
+      responses:
+        '200':
+          description: Отменённая сессия
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutSession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/workout-plans:
+    get:
+      tags: [Workouts]
+      operationId: listWorkoutPlans
+      summary: Получить календарь тренировок
+      x-requirements: [FR-704, FITLY-042]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/WorkoutPlanStatus'
+      responses:
+        '200':
+          description: Запланированные тренировки
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/WorkoutPlan'
+    post:
+      tags: [Workouts]
+      operationId: createWorkoutPlan
+      summary: Запланировать тренировку
+      x-requirements: [FR-704, FITLY-042, FITLY-051]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlanRequest'
+      responses:
+        '201':
+          description: Тренировка запланирована
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutPlan'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/workout-plans/{planId}:
+    parameters:
+      - $ref: '#/components/parameters/PlanId'
+    patch:
+      tags: [Workouts]
+      operationId: rescheduleWorkoutPlan
+      summary: Перенести запланированную тренировку
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutPlanRequest'
+      responses:
+        '200':
+          description: План обновлён
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutPlan'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Workouts]
+      operationId: cancelWorkoutPlan
+      summary: Отменить запланированную тренировку
+      responses:
+        '200':
+          description: План переведён в `cancelled`
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WorkoutPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/achievements:
+    get:
+      tags: [Achievements]
+      operationId: listAchievements
+      summary: Получить все достижения и прогресс пользователя
+      x-requirements: [FR-801, FR-802, FR-803, FITLY-047, FITLY-052]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AchievementStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Достижения
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UserAchievement'
+
+  /api/v1/achievements/{achievementId}:
+    parameters:
+      - $ref: '#/components/parameters/AchievementId'
+    get:
+      tags: [Achievements]
+      operationId: getAchievement
+      summary: Получить достижение и прогресс
+      responses:
+        '200':
+          description: Достижение
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserAchievement'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/settings:
+    get:
+      tags: [Settings]
+      operationId: getSettings
+      summary: Получить настройки приложения
+      x-requirements: [FR-1201, FR-1202, FITLY-014, FITLY-015, FITLY-050, FITLY-059, FITLY-062]
+      responses:
+        '200':
+          description: Настройки
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserSettings'
+    patch:
+      tags: [Settings]
+      operationId: updateSettings
+      summary: Частично обновить настройки
+      x-requirements: [FR-1201, FR-1202, FR-1408, FITLY-015, FITLY-059, FITLY-062]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSettingsRequest'
+      responses:
+        '200':
+          description: Обновлённые настройки
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserSettings'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/devices:
+    post:
+      tags: [Notifications]
+      operationId: registerPushDevice
+      summary: Зарегистрировать токен push-уведомлений
+      description: Это регистрация мобильного клиента, не интеграция с фитнес-устройствами.
+      x-requirements: [FR-1301, FR-1302, FR-1303]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceRequest'
+      responses:
+        '200':
+          description: Устройство создано или обновлено
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/devices/{deviceId}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceId'
+    delete:
+      tags: [Notifications]
+      operationId: unregisterPushDevice
+      summary: Удалить push-токен устройства
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: Получить историю уведомлений
+      x-requirements: [FR-1301, FR-1302, FR-1303, FITLY-066]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/NotificationStatus'
+        - name: type
+          in: query
+          schema:
+            $ref: '#/components/schemas/NotificationType'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Уведомления
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Notification'
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [Notifications]
+      operationId: getUnreadNotificationCount
+      summary: Получить количество непрочитанных уведомлений
+      responses:
+        '200':
+          description: Счётчик
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        required: [count]
+                        properties:
+                          count:
+                            type: integer
+                            minimum: 0
+
+  /api/v1/notifications/{notificationId}/read:
+    parameters:
+      - $ref: '#/components/parameters/NotificationId'
+    post:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Отметить уведомление прочитанным
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/notifications/read-all:
+    post:
+      tags: [Notifications]
+      operationId: markAllNotificationsRead
+      summary: Отметить все уведомления прочитанными
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+
+  /api/v1/analytics/summary:
+    get:
+      tags: [Analytics]
+      operationId: getAnalyticsSummary
+      summary: Получить единую сводку здоровья
+      x-requirements: [FR-1008, FITLY-049]
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/PeriodEndDate'
+      responses:
+        '200':
+          description: Агрегированная сводка
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AnalyticsSummary'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/analytics/weight:
+    get:
+      tags: [Analytics]
+      operationId: getWeightAnalytics
+      summary: Получить динамику веса и ИМТ
+      x-requirements: [FR-1003, FR-1006, FITLY-048]
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/PeriodEndDate'
+      responses:
+        '200':
+          description: Серия веса и текущий ИМТ
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WeightAnalytics'
+
+  /api/v1/analytics/activity:
+    get:
+      tags: [Analytics]
+      operationId: getActivityAnalytics
+      summary: Получить шаги, тренировки и сожжённые калории
+      x-requirements: [FR-1001, FR-1004, FITLY-044, FITLY-048]
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/PeriodEndDate'
+      responses:
+        '200':
+          description: Динамика активности
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ActivityAnalytics'
+
+  /api/v1/analytics/sleep:
+    get:
+      tags: [Analytics]
+      operationId: getSleepAnalytics
+      summary: Получить отчёт о длительности и качестве сна
+      x-requirements: [FR-1005, FITLY-048]
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/PeriodEndDate'
+      responses:
+        '200':
+          description: Динамика сна
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SleepAnalytics'
+
+  /api/v1/analytics/nutrition:
+    get:
+      tags: [Analytics]
+      operationId: getNutritionAnalytics
+      summary: Получить сводку питания за период
+      x-requirements: [FR-1007, FITLY-049]
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/PeriodEndDate'
+      responses:
+        '200':
+          description: Динамика КБЖУ
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NutritionAnalytics'
+
+  /api/v1/analytics/mood:
+    get:
+      tags: [Analytics]
+      operationId: getMoodAnalytics
+      summary: Получить динамику самочувствия
+      x-requirements: [FR-1002, FITLY-061]
+      parameters:
+        - $ref: '#/components/parameters/Period'
+        - $ref: '#/components/parameters/PeriodEndDate'
+      responses:
+        '200':
+          description: Динамика самочувствия
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MoodAnalytics'
+
+  /api/v1/exports:
+    get:
+      tags: [Exports]
+      operationId: listExports
+      summary: Получить историю запросов экспорта
+      x-requirements: [FR-1009, FITLY-054]
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Запросы экспорта
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExportRequest'
+    post:
+      tags: [Exports]
+      operationId: createExport
+      summary: Запустить формирование CSV или PDF
+      x-requirements: [FR-1009, FITLY-054]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateExportRequest'
+      responses:
+        '202':
+          description: Запрос создан; клиент опрашивает его состояние
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportRequest'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/exports/{exportId}:
+    parameters:
+      - $ref: '#/components/parameters/ExportId'
+    get:
+      tags: [Exports]
+      operationId: getExport
+      summary: Получить состояние экспорта
+      responses:
+        '200':
+          description: Состояние экспорта
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ExportRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/exports/{exportId}/download:
+    parameters:
+      - $ref: '#/components/parameters/ExportId'
+    get:
+      tags: [Exports]
+      operationId: downloadExport
+      summary: Скачать готовый файл экспорта
+      responses:
+        '200':
+          description: CSV или PDF; имя передаётся в `Content-Disposition`
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Файл ещё не готов или генерация завершилась ошибкой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '410':
+          description: Срок хранения файла истёк
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/support/requests:
+    get:
+      tags: [Support]
+      operationId: listOwnSupportRequests
+      summary: Получить свои обращения
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/SupportStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Обращения пользователя
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SupportRequestSummary'
+    post:
+      tags: [Support]
+      operationId: createSupportRequest
+      summary: Создать обращение или жалобу
+      x-requirements: [FR-1105, FITLY-057]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSupportRequest'
+      responses:
+        '201':
+          description: Обращение создано
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupportRequest'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/support/requests/{requestId}:
+    parameters:
+      - $ref: '#/components/parameters/SupportRequestId'
+    get:
+      tags: [Support]
+      operationId: getOwnSupportRequest
+      summary: Получить своё обращение и переписку
+      responses:
+        '200':
+          description: Обращение
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupportRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/support/requests/{requestId}/messages:
+    parameters:
+      - $ref: '#/components/parameters/SupportRequestId'
+    post:
+      tags: [Support]
+      operationId: replyToOwnSupportRequest
+      summary: Добавить сообщение в открытое обращение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupportMessageRequest'
+      responses:
+        '201':
+          description: Сообщение добавлено
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupportMessage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/support/requests/{requestId}/close:
+    parameters:
+      - $ref: '#/components/parameters/SupportRequestId'
+    post:
+      tags: [Support]
+      operationId: closeOwnSupportRequest
+      summary: Закрыть своё обращение
+      responses:
+        '200':
+          $ref: '#/components/responses/ActionCompleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/ai/recommendations:
+    post:
+      tags: [AI]
+      operationId: createAiRecommendation
+      summary: Сформировать персональную рекомендацию
+      description: Требует Premium и включённого ИИ-помощника.
+      x-requirements: [FR-1401, FR-1402, FR-1407, FR-1409, FR-1501, FITLY-071, FITLY-077]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiRecommendationRequest'
+      responses:
+        '200':
+          description: Информационная рекомендация
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AiTextResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/PremiumOrAiDisabled'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/ai/workout-recommendations:
+    post:
+      tags: [AI]
+      operationId: createAiWorkoutRecommendation
+      summary: Подобрать тренировку с помощью ИИ
+      x-requirements: [FR-1403, FR-1407, FITLY-072, FITLY-077]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiWorkoutRequest'
+      responses:
+        '200':
+          description: Рекомендованные тренировки из каталога
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AiWorkoutResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/PremiumOrAiDisabled'
+
+  /api/v1/ai/summaries:
+    post:
+      tags: [AI]
+      operationId: createAiSummary
+      summary: Сформировать текстовую сводку состояния
+      x-requirements: [FR-1404, FR-1407, FITLY-073, FITLY-077]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period]
+              properties:
+                period:
+                  $ref: '#/components/schemas/AnalyticsPeriod'
+                endDate:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Сводка
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AiTextResult'
+        '403':
+          $ref: '#/components/responses/PremiumOrAiDisabled'
+
+  /api/v1/ai/diary-prompts:
+    post:
+      tags: [AI]
+      operationId: createAiDiaryPrompts
+      summary: Получить уточняющие вопросы для дневника
+      x-requirements: [FR-1405, FR-1407, FITLY-077]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                draftText:
+                  type: string
+                  maxLength: 2000
+                moodScore:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+      responses:
+        '200':
+          description: Вопросы, которые пользователь может пропустить
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        required: [questions, disclaimer]
+                        properties:
+                          questions:
+                            type: array
+                            maxItems: 6
+                            items:
+                              type: string
+                          disclaimer:
+                            $ref: '#/components/schemas/AiDisclaimer'
+        '403':
+          $ref: '#/components/responses/PremiumOrAiDisabled'
+
+  /api/v1/ai/food-recognition:
+    post:
+      tags: [AI]
+      operationId: recognizeFoodImage
+      summary: Распознать блюдо по фото
+      x-requirements: [FR-1406, FR-1502, FITLY-075, FITLY-077]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: JPEG, PNG или WebP, не более 10 МБ.
+      responses:
+        '200':
+          description: Предполагаемый состав; пользователь обязан проверить значения
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FoodRecognitionResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/PremiumOrAiDisabled'
+        '413':
+          description: Файл слишком большой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/ai/voice-transcriptions:
+    post:
+      tags: [AI]
+      operationId: transcribeVoice
+      summary: Распознать голос для дневника или питания
+      x-requirements: [FR-403, FR-1503, FITLY-076, FITLY-077]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio, context]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: M4A, MP3, WAV или OGG, не более 20 МБ.
+                context:
+                  type: string
+                  enum: [diary, nutrition]
+                language:
+                  type: string
+                  default: ru
+                  maxLength: 10
+      responses:
+        '200':
+          description: Текст и извлечённые, но ещё не сохранённые поля
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/VoiceTranscriptionResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/PremiumOrAiDisabled'
+        '413':
+          description: Файл слишком большой
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/subscription/plans:
+    get:
+      tags: [Subscription]
+      operationId: listSubscriptionPlans
+      summary: Получить доступные тарифы
+      security: []
+      x-requirements: [FR-1504, FITLY-074]
+      responses:
+        '200':
+          description: Тарифы с идентификаторами магазинов приложений
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SubscriptionPlan'
+
+  /api/v1/subscription:
+    get:
+      tags: [Subscription]
+      operationId: getSubscription
+      summary: Получить статус Premium
+      x-requirements: [FR-1505, FR-1506, FITLY-074, FITLY-077]
+      responses:
+        '200':
+          description: Статус подписки или пробного периода
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Subscription'
+
+  /api/v1/subscription/trial:
+    post:
+      tags: [Subscription]
+      operationId: activateTrial
+      summary: Однократно активировать 7-дневный пробный период
+      x-requirements: [FR-1507, FITLY-074, FITLY-077]
+      responses:
+        '201':
+          description: Пробный период активирован
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Subscription'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/subscription/validate:
+    post:
+      tags: [Subscription]
+      operationId: validateSubscriptionPurchase
+      summary: Проверить покупку встроенного магазина
+      description: Покупка выполняется клиентом в Apple App Store или Google Play.
+      x-requirements: [FR-1504, FITLY-074]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidatePurchaseRequest'
+      responses:
+        '200':
+          description: Подписка синхронизирована
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/subscription/restore:
+    post:
+      tags: [Subscription]
+      operationId: restoreSubscription
+      summary: Восстановить покупки магазина приложений
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidatePurchaseRequest'
+      responses:
+        '200':
+          description: Статус восстановлен
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/admin/analytics/overview:
+    get:
+      tags: [Admin]
+      operationId: getAdminAnalyticsOverview
+      summary: Получить административную статистику
+      description: Только `role=admin`.
+      x-requirements: [FR-1101, FITLY-016, FITLY-017, FITLY-055]
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+      responses:
+        '200':
+          description: Метрики пользователей, функций и подписок
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminAnalytics'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/users:
+    get:
+      tags: [Admin]
+      operationId: listAdminUsers
+      summary: Получить пользователей
+      x-requirements: [FITLY-017, FITLY-055]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: role
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserRole'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/UserStatus'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Пользователи без паролей и токенов
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AdminUser'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Admin]
+      operationId: getAdminUser
+      summary: Получить пользователя
+      responses:
+        '200':
+          description: Пользователь
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminUser'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      operationId: updateAdminUser
+      summary: Изменить роль или состояние аккаунта
+      x-requirements: [FITLY-017]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                role:
+                  $ref: '#/components/schemas/UserRole'
+                status:
+                  $ref: '#/components/schemas/UserStatus'
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: Обновлённый пользователь
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/AdminUser'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/exercises:
+    get:
+      tags: [Admin]
+      operationId: listAdminExercises
+      summary: Получить упражнения, включая неактивные
+      x-requirements: [FR-1103, FITLY-056]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Каталог упражнений
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Exercise'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      operationId: createAdminExercise
+      summary: Создать упражнение
+      x-requirements: [FR-1103, FITLY-056]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseRequest'
+      responses:
+        '201':
+          description: Упражнение создано
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/exercises/{exerciseId}:
+    parameters:
+      - $ref: '#/components/parameters/ExerciseId'
+    get:
+      tags: [Admin]
+      operationId: getAdminExercise
+      summary: Получить упражнение, включая неактивное
+      responses:
+        '200':
+          description: Упражнение
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Exercise'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      operationId: updateAdminExercise
+      summary: Изменить упражнение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseRequest'
+      responses:
+        '200':
+          description: Упражнение обновлено
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      operationId: deleteAdminExercise
+      summary: Деактивировать упражнение
+      description: Физически не удаляется, чтобы не ломать историю тренировок.
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/workouts:
+    get:
+      tags: [Admin]
+      operationId: listAdminWorkouts
+      summary: Получить тренировочные программы, включая неактивные
+      x-requirements: [FR-1103, FITLY-056]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Программы
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Workout'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      operationId: createAdminWorkout
+      summary: Создать тренировочную программу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutRequest'
+      responses:
+        '201':
+          description: Программа создана
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workout'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/workouts/{workoutId}:
+    parameters:
+      - $ref: '#/components/parameters/WorkoutId'
+    get:
+      tags: [Admin]
+      operationId: getAdminWorkout
+      summary: Получить программу, включая неактивную
+      responses:
+        '200':
+          description: Тренировочная программа
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workout'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      operationId: updateAdminWorkout
+      summary: Изменить тренировочную программу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutRequest'
+      responses:
+        '200':
+          description: Программа обновлена
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Workout'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      operationId: deleteAdminWorkout
+      summary: Деактивировать тренировочную программу
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/food-products:
+    get:
+      tags: [Admin]
+      operationId: listAdminFoodProducts
+      summary: Получить системный каталог продуктов
+      x-requirements: [FR-1104, FITLY-058]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: active
+          in: query
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Продукты
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/FoodProduct'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Admin]
+      operationId: createAdminFoodProduct
+      summary: Создать системный продукт
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodProductRequest'
+      responses:
+        '201':
+          description: Продукт создан
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/food-products/{productId}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Admin]
+      operationId: getAdminFoodProduct
+      summary: Получить системный продукт, включая неактивный
+      responses:
+        '200':
+          description: Продукт
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FoodProduct'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      operationId: updateAdminFoodProduct
+      summary: Изменить системный продукт
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodProductRequest'
+      responses:
+        '200':
+          description: Продукт обновлён
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin]
+      operationId: deleteAdminFoodProduct
+      summary: Деактивировать системный продукт
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/support-requests:
+    get:
+      tags: [Admin]
+      operationId: listAdminSupportRequests
+      summary: Получить обращения всех пользователей
+      x-requirements: [FR-1105, FITLY-057]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/SupportStatus'
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Обращения
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/SupportRequestSummary'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/support-requests/{requestId}:
+    parameters:
+      - $ref: '#/components/parameters/SupportRequestId'
+    get:
+      tags: [Admin]
+      operationId: getAdminSupportRequest
+      summary: Получить обращение и переписку
+      responses:
+        '200':
+          description: Обращение
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupportRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin]
+      operationId: updateAdminSupportRequest
+      summary: Изменить состояние обращения
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  $ref: '#/components/schemas/SupportStatus'
+      responses:
+        '200':
+          description: Обращение обновлено
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupportRequest'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/v1/admin/support-requests/{requestId}/messages:
+    parameters:
+      - $ref: '#/components/parameters/SupportRequestId'
+    post:
+      tags: [Admin]
+      operationId: replyToAdminSupportRequest
+      summary: Ответить пользователю
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SupportMessageRequest'
+      responses:
+        '201':
+          description: Ответ добавлен
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SupportMessage'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/logs:
+    get:
+      tags: [Admin]
+      operationId: listAdminLogs
+      summary: Получить технические логи ошибок
+      x-requirements: [FITLY-063]
+      parameters:
+        - name: level
+          in: query
+          schema:
+            $ref: '#/components/schemas/LogLevel'
+        - name: service
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: userId
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 200
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Логи
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/actions:
+    get:
+      tags: [Admin]
+      operationId: listAdminActions
+      summary: Получить журнал административных действий
+      parameters:
+        - name: adminId
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: action
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Действия администраторов
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PaginatedEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AdminAction'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/notifications/broadcasts:
+    post:
+      tags: [Admin]
+      operationId: createAdminNotificationBroadcast
+      summary: Отправить массовое push-уведомление
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BroadcastRequest'
+      responses:
+        '202':
+          description: Рассылка поставлена в очередь
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties:
+                      data:
+                        type: object
+                        required: [broadcastId, status]
+                        properties:
+                          broadcastId:
+                            type: integer
+                            format: int64
+                          status:
+                            type: string
+                            enum: [queued]
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Короткоживущий access JWT из поля `data.token`, полученного при входе,
+        регистрации или refresh. Frontend передаёт его как
+        `Authorization: Bearer <token>`. Refresh-токен здесь не используется.
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    FromDate:
+      name: from
+      in: query
+      description: Начальная локальная дата включительно.
+      schema:
+        type: string
+        format: date
+    ToDate:
+      name: to
+      in: query
+      description: Конечная локальная дата включительно.
+      schema:
+        type: string
+        format: date
+    Period:
+      name: period
+      in: query
+      required: true
+      schema:
+        $ref: '#/components/schemas/AnalyticsPeriod'
+    PeriodEndDate:
+      name: endDate
+      in: query
+      description: Последний день периода; по умолчанию сегодня в часовом поясе пользователя.
+      schema:
+        type: string
+        format: date
+    DatePath:
+      name: date
+      in: path
+      required: true
+      schema:
+        type: string
+        format: date
+    EntryId:
+      name: entryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    GoalId:
+      name: goalId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    MealId:
+      name: mealId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    WorkoutId:
+      name: workoutId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ExerciseId:
+      name: exerciseId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    PlanId:
+      name: planId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    AchievementId:
+      name: achievementId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ExportId:
+      name: exportId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    SupportRequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+
+  responses:
+    ActionCompleted:
+      description: Действие выполнено
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ActionResult'
+    Deleted:
+      description: Ресурс удалён или деактивирован
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - type: object
+                required: [data]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DeleteResult'
+    ValidationError:
+      description: Ошибка синтаксиса или валидации полей
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Проверьте введённые данные
+            error:
+              code: VALIDATION_ERROR
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+              details:
+                - field: password
+                  code: PASSWORD_TOO_WEAK
+                  message: Пароль не соответствует требованиям
+    Unauthorized:
+      description: Access-токен отсутствует, истёк или недействителен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Требуется авторизация
+            error:
+              code: UNAUTHORIZED
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+    Forbidden:
+      description: Недостаточно прав для действия
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Доступ запрещён
+            error:
+              code: FORBIDDEN
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+    PremiumOrAiDisabled:
+      description: Нет активного Premium либо ИИ отключён в настройках
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            premiumRequired:
+              value:
+                success: false
+                message: Требуется Premium
+                error:
+                  code: PREMIUM_REQUIRED
+                  requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+            aiDisabled:
+              value:
+                success: false
+                message: ИИ-помощник отключён
+                error:
+                  code: AI_DISABLED
+                  requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+    NotFound:
+      description: Ресурс не найден или не принадлежит текущему пользователю
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Ресурс не найден
+            error:
+              code: NOT_FOUND
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+    Conflict:
+      description: Операция конфликтует с текущим состоянием ресурса
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Операция недоступна в текущем состоянии
+            error:
+              code: STATE_CONFLICT
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+    TooManyRequests:
+      description: Превышен лимит запросов
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Слишком много запросов
+            error:
+              code: RATE_LIMIT_EXCEEDED
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+    ServiceUnavailable:
+      description: Зависимость API временно недоступна
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Сервис временно недоступен
+            error:
+              code: SERVICE_UNAVAILABLE
+              requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      description: |
+        Базовая оболочка успешного JSON-ответа. Конкретная операция добавляет
+        обязательное поле `data` через `allOf`. Frontend читает бизнес-данные из
+        `data`, а не из корня ответа.
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+          description: Признак успешного ответа; в этой оболочке всегда `true`.
+        meta:
+          $ref: '#/components/schemas/ResponseMeta'
+    PaginatedEnvelope:
+      type: object
+      description: Оболочка списка с обязательными метаданными пагинации.
+      required: [success, meta]
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+          description: Признак успешного ответа; всегда `true`.
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+    ResponseMeta:
+      type: object
+      description: Служебные метаданные ответа, не относящиеся к бизнес-сущности.
+      properties:
+        requestId:
+          type: string
+          description: |
+            Идентификатор HTTP-запроса для сопоставления клиентской ошибки с
+            backend-логами. Не является ID бизнес-сущности и не переиспользуется
+            для другого запроса.
+          example: req_01J0Y7Y0QZ5M4X2D7F8A
+    PaginationMeta:
+      allOf:
+        - $ref: '#/components/schemas/ResponseMeta'
+        - type: object
+          description: Метаданные постраничного списка; нумерация начинается с 1.
+          required: [page, pageSize, total, totalPages]
+          properties:
+            page:
+              type: integer
+              minimum: 1
+              description: Номер текущей страницы, начиная с 1.
+            pageSize:
+              type: integer
+              minimum: 1
+              description: Фактический максимальный размер страницы.
+            total:
+              type: integer
+              minimum: 0
+              description: Общее количество элементов с учётом фильтров.
+            totalPages:
+              type: integer
+              minimum: 0
+              description: Общее количество страниц; 0 для пустой выборки.
+    ErrorResponse:
+      type: object
+      description: |
+        Единая оболочка ошибки. Frontend использует HTTP-статус и `error.code`
+        для логики, `message` — для отображения, `error.requestId` — для
+        диагностики. Внутренние сведения сервера в ответ не включаются.
+      required: [success, message, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+          description: Признак ошибки; в этой оболочке всегда `false`.
+        message:
+          type: string
+          description: |
+            Безопасное человекочитаемое общее сообщение. Не является стабильным
+            API-кодом и не должно использоваться во frontend-условиях.
+        error:
+          $ref: '#/components/schemas/ErrorInfo'
+    ErrorInfo:
+      type: object
+      description: Машиночитаемая и диагностическая часть ошибки.
+      required: [code, requestId]
+      properties:
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: |
+            Стабильный код причины в `UPPER_SNAKE_CASE`, например
+            `VALIDATION_ERROR`, `INVALID_CREDENTIALS` или `PREMIUM_REQUIRED`.
+        requestId:
+          type: string
+          description: |
+            Уникальный ID текущего HTTP-запроса. Должен совпадать с ID в
+            backend-логах и передаваться разработчикам при разборе проблемы.
+          example: req_01J0Y7Y0QZ5M4X2D7F8A
+        details:
+          type: array
+          description: |
+            Необязательные уточнения. Для `VALIDATION_ERROR` обычно содержит по
+            одному элементу для каждого некорректного поля.
+          items:
+            $ref: '#/components/schemas/FieldError'
+    FieldError:
+      type: object
+      description: Деталь ошибки поля либо отдельной части запроса.
+      required: [message]
+      properties:
+        field:
+          type: string
+          description: |
+            Путь к полю в `camelCase`, например `email` или
+            `goals[0].targetValue`. Отсутствует, если проблема не относится к полю.
+        code:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]*$'
+          description: Необязательный стабильный код конкретной проблемы поля.
+        message:
+          type: string
+          description: Безопасное человекочитаемое описание проблемы.
+    ActionResult:
+      type: object
+      required: [completed]
+      properties:
+        completed:
+          type: boolean
+          enum: [true]
+    DeleteResult:
+      type: object
+      required: [deleted]
+      properties:
+        deleted:
+          type: boolean
+          enum: [true]
+    HealthStatus:
+      type: object
+      required: [status, database, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        database:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    UserRole:
+      type: string
+      enum: [user, admin]
+    UserStatus:
+      type: string
+      enum: [active, blocked, deleted]
+    User:
+      type: object
+      required: [id, email, role, status, emailVerified, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+          minimum: 1
+        email:
+          type: string
+          format: email
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        emailVerified:
+          type: boolean
+        appVersion:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    Password:
+      type: string
+      format: password
+      minLength: 8
+      maxLength: 72
+      pattern: '^(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9]).{8,72}$'
+      description: Минимум 8 символов, одна заглавная латинская буква, цифра и спецсимвол.
+      example: Fitly#2026
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          $ref: '#/components/schemas/Password'
+        passwordConfirmation:
+          type: string
+          format: password
+          description: Если передано, должно совпадать с `password`.
+        appVersion:
+          type: string
+          maxLength: 30
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          format: password
+          minLength: 1
+          maxLength: 72
+        appVersion:
+          type: string
+          maxLength: 30
+    AuthTokens:
+      type: object
+      description: |
+        Пара access/refresh-токенов. `token` передаётся как Bearer при обращении
+        к защищённым операциям; `refreshToken` используется только для обновления
+        или завершения сессии и не передаётся как Bearer.
+      required: [token, refreshToken, tokenType, expiresIn]
+      properties:
+        token:
+          type: string
+          description: Access JWT; имя `token` сохранено для совместимости.
+        refreshToken:
+          type: string
+          description: |
+            Одноразово ротируемый токен сессии. После успешного refresh frontend
+            заменяет и access token, и refresh token на новую пару.
+        tokenType:
+          type: string
+          enum: [Bearer]
+          description: Схема передачи access token в заголовке Authorization.
+        expiresIn:
+          type: integer
+          description: Срок жизни access-токена в секундах.
+          minimum: 60
+    AuthData:
+      allOf:
+        - $ref: '#/components/schemas/AuthTokens'
+        - type: object
+          required: [user]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessEnvelope'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/AuthData'
+    RefreshTokenRequest:
+      type: object
+      description: |
+        Тело обновления сессии. Здесь передаётся refresh-токен, а не access JWT.
+        Успешная операция инвалидирует использованное значение и возвращает новую
+        пару токенов.
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          minLength: 20
+    PasswordResetRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+    PasswordResetConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [token, newPassword]
+      properties:
+        token:
+          type: string
+          minLength: 20
+        newPassword:
+          $ref: '#/components/schemas/Password'
+        newPasswordConfirmation:
+          type: string
+          format: password
+    ChangePasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          format: password
+        newPassword:
+          $ref: '#/components/schemas/Password'
+        newPasswordConfirmation:
+          type: string
+          format: password
+    EmailChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [newEmail, currentPassword]
+      properties:
+        newEmail:
+          type: string
+          format: email
+          maxLength: 254
+        currentPassword:
+          type: string
+          format: password
+
+    Gender:
+      type: string
+      enum: [male, female, other, prefer_not_to_say]
+    Profile:
+      type: object
+      required: [userId, email, firstName, birthDate, gender, heightCm, weightKg, updatedAt]
+      properties:
+        userId:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        age:
+          type: integer
+          minimum: 0
+          nullable: true
+          readOnly: true
+        gender:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/Gender'
+          nullable: true
+        heightCm:
+          type: number
+          format: float
+          minimum: 50
+          maximum: 260
+          nullable: true
+        weightKg:
+          type: number
+          format: float
+          minimum: 20
+          maximum: 500
+          nullable: true
+          description: Последняя запись веса.
+        bmi:
+          type: number
+          format: float
+          nullable: true
+          readOnly: true
+        updatedAt:
+          type: string
+          format: date-time
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        birthDate:
+          type: string
+          format: date
+        gender:
+          $ref: '#/components/schemas/Gender'
+        heightCm:
+          type: number
+          format: float
+          minimum: 50
+          maximum: 260
+        weightKg:
+          type: number
+          format: float
+          minimum: 20
+          maximum: 500
+          description: При изменении создаёт/обновляет запись веса за сегодня.
+
+    GoalType:
+      type: string
+      enum: [weight_loss, weight_gain, maintain_shape, steps, water, custom]
+    GoalStatus:
+      type: string
+      enum: [created, in_progress, completed, cancelled]
+    GoalInput:
+      type: object
+      additionalProperties: false
+      required: [goalType, title, targetValue, unit]
+      properties:
+        goalType:
+          $ref: '#/components/schemas/GoalType'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        targetValue:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+          enum: [kg, steps, ml, workouts, minutes, repetitions, custom]
+        startsOn:
+          type: string
+          format: date
+        endsOn:
+          type: string
+          format: date
+          nullable: true
+    Goal:
+      allOf:
+        - $ref: '#/components/schemas/GoalInput'
+        - type: object
+          required: [id, status, progressPercent, createdAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            status:
+              $ref: '#/components/schemas/GoalStatus'
+            currentValue:
+              type: number
+              nullable: true
+            progressPercent:
+              type: number
+              minimum: 0
+              maximum: 100
+            createdAt:
+              type: string
+              format: date-time
+            completedAt:
+              type: string
+              format: date-time
+              nullable: true
+    ReplaceGoalsRequest:
+      type: object
+      additionalProperties: false
+      required: [goals]
+      properties:
+        goals:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/GoalInput'
+    UpdateGoalRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 100
+        targetValue:
+          type: number
+          minimum: 0
+        unit:
+          type: string
+          enum: [kg, steps, ml, workouts, minutes, repetitions, custom]
+        endsOn:
+          type: string
+          format: date
+
+    WaterTodayRequest:
+      type: object
+      additionalProperties: false
+      required: [amountMl]
+      properties:
+        amountMl:
+          type: integer
+          minimum: 0
+          maximum: 20000
+    WaterDay:
+      type: object
+      required: [date, amountMl, goalMl, progressPercent]
+      properties:
+        date:
+          type: string
+          format: date
+        amountMl:
+          type: integer
+          minimum: 0
+        goalMl:
+          type: integer
+          minimum: 0
+        progressPercent:
+          type: number
+          minimum: 0
+    SleepTodayRequest:
+      type: object
+      additionalProperties: false
+      required: [sleepStart, sleepEnd, sleepQuality]
+      properties:
+        sleepStart:
+          type: string
+          format: date-time
+        sleepEnd:
+          type: string
+          format: date-time
+        sleepHours:
+          type: integer
+          minimum: 0
+          maximum: 24
+          deprecated: true
+          description: Совместимое поле; сервер рассчитывает длительность по времени.
+        sleepMinutes:
+          type: integer
+          minimum: 0
+          maximum: 59
+          deprecated: true
+        sleepQuality:
+          type: integer
+          minimum: 1
+          maximum: 5
+    MoodTodayRequest:
+      type: object
+      additionalProperties: false
+      required: [moodScore]
+      properties:
+        moodScore:
+          type: integer
+          minimum: 1
+          maximum: 5
+        moodLabel:
+          type: string
+          maxLength: 50
+        moodEmoji:
+          type: string
+          maxLength: 16
+        note:
+          type: string
+          maxLength: 1000
+    MoodEntry:
+      allOf:
+        - $ref: '#/components/schemas/MoodTodayRequest'
+        - type: object
+          required: [id, date, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            date:
+              type: string
+              format: date
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    Favorites:
+      type: object
+      required: [water, weight, height, bmi]
+      properties:
+        water:
+          type: boolean
+        weight:
+          type: boolean
+        height:
+          type: boolean
+        bmi:
+          type: boolean
+    FavoritesRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        water:
+          type: boolean
+          default: true
+        weight:
+          type: boolean
+          default: true
+        height:
+          type: boolean
+          default: true
+        bmi:
+          type: boolean
+          default: true
+    DailyTrackingRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        steps:
+          type: integer
+          minimum: 0
+          maximum: 200000
+        calories:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 20000
+    DailyTracking:
+      allOf:
+        - $ref: '#/components/schemas/DailyTrackingRequest'
+        - type: object
+          required: [date, steps, calories]
+          properties:
+            date:
+              type: string
+              format: date
+
+    WeightEntryRequest:
+      type: object
+      additionalProperties: false
+      required: [date, weightKg]
+      properties:
+        date:
+          type: string
+          format: date
+        weightKg:
+          type: number
+          format: float
+          minimum: 20
+          maximum: 500
+    WeightEntry:
+      allOf:
+        - $ref: '#/components/schemas/WeightEntryRequest'
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    SleepEntryRequest:
+      type: object
+      additionalProperties: false
+      required: [sleepStart, sleepEnd, sleepQuality]
+      properties:
+        sleepStart:
+          type: string
+          format: date-time
+        sleepEnd:
+          type: string
+          format: date-time
+          description: Должно быть позже `sleepStart`; переход через полночь допустим.
+        sleepQuality:
+          type: integer
+          minimum: 1
+          maximum: 5
+    SleepEntry:
+      allOf:
+        - $ref: '#/components/schemas/SleepEntryRequest'
+        - type: object
+          required: [id, date, durationMinutes, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            date:
+              type: string
+              format: date
+              description: Локальная дата пробуждения.
+            durationMinutes:
+              type: integer
+              minimum: 1
+              maximum: 1440
+              readOnly: true
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    WaterEntryRequest:
+      type: object
+      additionalProperties: false
+      required: [amountMl]
+      properties:
+        amountMl:
+          type: integer
+          minimum: 1
+          maximum: 5000
+        consumedAt:
+          type: string
+          format: date-time
+          description: По умолчанию текущее время.
+    WaterEntry:
+      allOf:
+        - $ref: '#/components/schemas/WaterEntryRequest'
+        - type: object
+          required: [id, consumedAt, date, createdAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            consumedAt:
+              type: string
+              format: date-time
+            date:
+              type: string
+              format: date
+            createdAt:
+              type: string
+              format: date-time
+    StepEntry:
+      type: object
+      required: [date, steps, updatedAt]
+      properties:
+        date:
+          type: string
+          format: date
+        steps:
+          type: integer
+          minimum: 0
+          maximum: 200000
+        updatedAt:
+          type: string
+          format: date-time
+
+    DiaryEntryRequest:
+      type: object
+      additionalProperties: false
+      required: [recordedAt, moodScore]
+      properties:
+        recordedAt:
+          type: string
+          format: date-time
+        moodScore:
+          type: integer
+          minimum: 1
+          maximum: 5
+        energyLevel:
+          type: integer
+          minimum: 1
+          maximum: 5
+        stressLevel:
+          type: integer
+          minimum: 1
+          maximum: 5
+        tags:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        symptoms:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+        note:
+          type: string
+          maxLength: 5000
+    DiaryEntry:
+      allOf:
+        - $ref: '#/components/schemas/DiaryEntryRequest'
+        - type: object
+          required: [id, date, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            date:
+              type: string
+              format: date
+            inputMethod:
+              type: string
+              enum: [manual, voice]
+              default: manual
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    NutritionValues:
+      type: object
+      required: [calories, proteinG, fatG, carbsG]
+      properties:
+        calories:
+          type: number
+          format: float
+          minimum: 0
+        proteinG:
+          type: number
+          format: float
+          minimum: 0
+        fatG:
+          type: number
+          format: float
+          minimum: 0
+        carbsG:
+          type: number
+          format: float
+          minimum: 0
+    FoodProductRequest:
+      type: object
+      additionalProperties: false
+      required: [name, nutritionPer100g]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        nutritionPer100g:
+          $ref: '#/components/schemas/NutritionValues'
+        isActive:
+          type: boolean
+          default: true
+    FoodProduct:
+      allOf:
+        - $ref: '#/components/schemas/FoodProductRequest'
+        - type: object
+          required: [id, source, isActive, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            source:
+              type: string
+              enum: [system, custom]
+            isActive:
+              type: boolean
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    MealType:
+      type: string
+      enum: [breakfast, lunch, dinner, snack]
+    CatalogMealItemInput:
+      type: object
+      additionalProperties: false
+      required: [productId, amountG]
+      properties:
+        productId:
+          type: integer
+          format: int64
+          minimum: 1
+        amountG:
+          type: number
+          format: float
+          minimum: 0.1
+          maximum: 10000
+    ManualMealItemInput:
+      type: object
+      additionalProperties: false
+      required: [name, amountG, nutritionPer100g]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        amountG:
+          type: number
+          format: float
+          minimum: 0.1
+          maximum: 10000
+        nutritionPer100g:
+          $ref: '#/components/schemas/NutritionValues'
+    MealItemInput:
+      oneOf:
+        - $ref: '#/components/schemas/CatalogMealItemInput'
+        - $ref: '#/components/schemas/ManualMealItemInput'
+    MealItem:
+      type: object
+      required: [id, name, amountG, nutritionPer100g, nutritionTotal]
+      properties:
+        id:
+          type: integer
+          format: int64
+        productId:
+          type: integer
+          format: int64
+          nullable: true
+        name:
+          type: string
+        amountG:
+          type: number
+          format: float
+        nutritionPer100g:
+          $ref: '#/components/schemas/NutritionValues'
+        nutritionTotal:
+          $ref: '#/components/schemas/NutritionValues'
+    MealEntryRequest:
+      type: object
+      additionalProperties: false
+      required: [mealType, eatenAt, items]
+      properties:
+        mealType:
+          $ref: '#/components/schemas/MealType'
+        eatenAt:
+          type: string
+          format: date-time
+        title:
+          type: string
+          maxLength: 200
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/MealItemInput'
+    MealEntry:
+      type: object
+      required: [id, mealType, eatenAt, date, items, nutritionTotal, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        mealType:
+          $ref: '#/components/schemas/MealType'
+        eatenAt:
+          type: string
+          format: date-time
+        date:
+          type: string
+          format: date
+        title:
+          type: string
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealItem'
+        nutritionTotal:
+          $ref: '#/components/schemas/NutritionValues'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    NutritionDay:
+      type: object
+      required: [date, meals, totals]
+      properties:
+        date:
+          type: string
+          format: date
+        meals:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealEntry'
+        totals:
+          $ref: '#/components/schemas/NutritionValues'
+
+    WorkoutType:
+      type: string
+      enum: [cardio, strength, stretching, yoga]
+    BodyArea:
+      type: string
+      enum: [abs, legs, back, arms, glutes, full_body]
+    Intensity:
+      type: string
+      enum: [low, medium, high]
+    WorkoutSummary:
+      type: object
+      required: [id, title, type, bodyArea, intensity, durationMinutes, estimatedCalories, isActive]
+      properties:
+        id:
+          type: integer
+          format: int64
+        title:
+          type: string
+        description:
+          type: string
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        bodyArea:
+          $ref: '#/components/schemas/BodyArea'
+        intensity:
+          $ref: '#/components/schemas/Intensity'
+        durationMinutes:
+          type: integer
+          minimum: 1
+        estimatedCalories:
+          type: number
+          format: float
+          minimum: 0
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        isActive:
+          type: boolean
+    MediaResource:
+      type: object
+      required: [type, url]
+      properties:
+        type:
+          type: string
+          enum: [image, video]
+        url:
+          type: string
+          format: uri
+        title:
+          type: string
+          maxLength: 200
+    ExerciseRequest:
+      type: object
+      additionalProperties: false
+      required: [title, description, type, bodyArea, intensity, instructions]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        bodyArea:
+          $ref: '#/components/schemas/BodyArea'
+        intensity:
+          $ref: '#/components/schemas/Intensity'
+        instructions:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        media:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/MediaResource'
+        isActive:
+          type: boolean
+          default: true
+    Exercise:
+      allOf:
+        - $ref: '#/components/schemas/ExerciseRequest'
+        - type: object
+          required: [id, isActive, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            isActive:
+              type: boolean
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    WorkoutExerciseRequest:
+      type: object
+      additionalProperties: false
+      required: [exerciseId, order]
+      properties:
+        exerciseId:
+          type: integer
+          format: int64
+          minimum: 1
+        order:
+          type: integer
+          minimum: 1
+        sets:
+          type: integer
+          minimum: 1
+          maximum: 100
+        repetitions:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        durationSeconds:
+          type: integer
+          minimum: 1
+          maximum: 86400
+        restSeconds:
+          type: integer
+          minimum: 0
+          maximum: 3600
+    WorkoutExercise:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutExerciseRequest'
+        - type: object
+          required: [exercise]
+          properties:
+            exercise:
+              $ref: '#/components/schemas/Exercise'
+    WorkoutRequest:
+      type: object
+      additionalProperties: false
+      required: [title, description, type, bodyArea, intensity, durationMinutes, estimatedCalories, exercises]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        bodyArea:
+          $ref: '#/components/schemas/BodyArea'
+        intensity:
+          $ref: '#/components/schemas/Intensity'
+        durationMinutes:
+          type: integer
+          minimum: 5
+          maximum: 240
+        estimatedCalories:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5000
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        exercises:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WorkoutExerciseRequest'
+        isActive:
+          type: boolean
+          default: true
+    Workout:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutSummary'
+        - type: object
+          required: [exercises, createdAt, updatedAt]
+          properties:
+            exercises:
+              type: array
+              items:
+                $ref: '#/components/schemas/WorkoutExercise'
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    WorkoutSessionStatus:
+      type: string
+      enum: [in_progress, paused, completed, cancelled]
+    StartWorkoutSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [workoutId]
+      properties:
+        workoutId:
+          type: integer
+          format: int64
+          minimum: 1
+        workoutPlanId:
+          type: integer
+          format: int64
+          minimum: 1
+          nullable: true
+    ExerciseResult:
+      type: object
+      required: [exerciseId, completed]
+      properties:
+        exerciseId:
+          type: integer
+          format: int64
+        completed:
+          type: boolean
+        setsCompleted:
+          type: integer
+          minimum: 0
+        repetitionsCompleted:
+          type: integer
+          minimum: 0
+        durationSeconds:
+          type: integer
+          minimum: 0
+    FinishWorkoutSessionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        caloriesBurned:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5000
+          description: Если не передано, сервер использует оценку программы.
+        exerciseResults:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/ExerciseResult'
+    WorkoutSession:
+      type: object
+      required: [id, workout, status, startedAt, elapsedSeconds, caloriesBurned, exerciseResults, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        workout:
+          $ref: '#/components/schemas/WorkoutSummary'
+        workoutPlanId:
+          type: integer
+          format: int64
+          nullable: true
+        status:
+          $ref: '#/components/schemas/WorkoutSessionStatus'
+        startedAt:
+          type: string
+          format: date-time
+        pausedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        elapsedSeconds:
+          type: integer
+          minimum: 0
+          description: Исключает время на паузе.
+        caloriesBurned:
+          type: number
+          format: float
+          minimum: 0
+        exerciseResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExerciseResult'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    WorkoutPlanStatus:
+      type: string
+      enum: [scheduled, completed, cancelled]
+    WorkoutPlanRequest:
+      type: object
+      additionalProperties: false
+      required: [workoutId, scheduledAt]
+      properties:
+        workoutId:
+          type: integer
+          format: int64
+          minimum: 1
+        scheduledAt:
+          type: string
+          format: date-time
+        reminderMinutesBefore:
+          type: integer
+          minimum: 0
+          maximum: 10080
+          default: 30
+    WorkoutPlan:
+      allOf:
+        - $ref: '#/components/schemas/WorkoutPlanRequest'
+        - type: object
+          required: [id, workout, status, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            workout:
+              $ref: '#/components/schemas/WorkoutSummary'
+            status:
+              $ref: '#/components/schemas/WorkoutPlanStatus'
+            completedSessionId:
+              type: integer
+              format: int64
+              nullable: true
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    AchievementStatus:
+      type: string
+      enum: [locked, in_progress, earned]
+    UserAchievement:
+      type: object
+      required: [id, code, title, description, rewardType, conditionText, status, currentValue, targetValue, progressPercent]
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+          pattern: '^[A-Z0-9_]+$'
+        title:
+          type: string
+        description:
+          type: string
+        rewardType:
+          type: string
+          enum: [badge, medal]
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        conditionText:
+          type: string
+        status:
+          $ref: '#/components/schemas/AchievementStatus'
+        currentValue:
+          type: number
+          minimum: 0
+        targetValue:
+          type: number
+          minimum: 0
+        progressPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+        earnedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Theme:
+      type: string
+      enum: [light, dark, system]
+    QuickAction:
+      type: string
+      enum: [water, nutrition, workout, mood, weight]
+    NotificationPreferences:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        waterEnabled:
+          type: boolean
+        waterIntervalMinutes:
+          type: integer
+          minimum: 30
+          maximum: 1440
+        sleepEnabled:
+          type: boolean
+        sleepReminderTime:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          example: '22:30'
+        workoutsEnabled:
+          type: boolean
+        workoutReminderMinutesBefore:
+          type: integer
+          minimum: 0
+          maximum: 10080
+        achievementsEnabled:
+          type: boolean
+        doNotDisturbEnabled:
+          type: boolean
+        doNotDisturbFrom:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+        doNotDisturbTo:
+          type: string
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+    UserSettings:
+      type: object
+      required: [theme, language, timezone, quickAction, aiEnabled, notifications, updatedAt]
+      properties:
+        theme:
+          $ref: '#/components/schemas/Theme'
+        language:
+          type: string
+          example: ru
+          maxLength: 10
+        timezone:
+          type: string
+          description: IANA timezone, например `Europe/Tallinn`.
+          example: Europe/Tallinn
+        quickAction:
+          $ref: '#/components/schemas/QuickAction'
+        aiEnabled:
+          type: boolean
+        notifications:
+          $ref: '#/components/schemas/NotificationPreferences'
+        updatedAt:
+          type: string
+          format: date-time
+    UpdateSettingsRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        theme:
+          $ref: '#/components/schemas/Theme'
+        language:
+          type: string
+          maxLength: 10
+        timezone:
+          type: string
+          maxLength: 100
+        quickAction:
+          $ref: '#/components/schemas/QuickAction'
+        aiEnabled:
+          type: boolean
+        notifications:
+          $ref: '#/components/schemas/NotificationPreferences'
+    DeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [platform, pushToken]
+      properties:
+        platform:
+          type: string
+          enum: [ios, android]
+        pushToken:
+          type: string
+          minLength: 20
+          maxLength: 4096
+        appVersion:
+          type: string
+          maxLength: 30
+    Device:
+      allOf:
+        - $ref: '#/components/schemas/DeviceRequest'
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+    NotificationType:
+      type: string
+      enum: [water, sleep, workout, achievement, system, support]
+    NotificationStatus:
+      type: string
+      enum: [created, scheduled, sent, read, cancelled]
+    Notification:
+      type: object
+      required: [id, type, title, body, status, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          $ref: '#/components/schemas/NotificationType'
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          $ref: '#/components/schemas/NotificationStatus'
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AnalyticsPeriod:
+      type: string
+      enum: [week, month, year]
+    TimeSeriesPoint:
+      type: object
+      required: [date, value]
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+        secondaryValue:
+          type: number
+          nullable: true
+    PeriodRange:
+      type: object
+      required: [period, from, to]
+      properties:
+        period:
+          $ref: '#/components/schemas/AnalyticsPeriod'
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+    WorkoutMetrics:
+      type: object
+      required: [workoutCount, totalMinutes, caloriesBurned]
+      properties:
+        workoutCount:
+          type: integer
+          minimum: 0
+        totalMinutes:
+          type: integer
+          minimum: 0
+        caloriesBurned:
+          type: number
+          minimum: 0
+    AnalyticsSummary:
+      type: object
+      required: [range, latestWeightKg, bmi, averageSleepMinutes, averageSleepQuality, totalWaterMl, averageDailyWaterMl, totalSteps, nutrition, workouts, averageMoodScore]
+      properties:
+        range:
+          $ref: '#/components/schemas/PeriodRange'
+        latestWeightKg:
+          type: number
+          nullable: true
+        weightChangeKg:
+          type: number
+          nullable: true
+        bmi:
+          type: number
+          nullable: true
+        averageSleepMinutes:
+          type: number
+          nullable: true
+        averageSleepQuality:
+          type: number
+          nullable: true
+        totalWaterMl:
+          type: integer
+          minimum: 0
+        averageDailyWaterMl:
+          type: number
+          minimum: 0
+        totalSteps:
+          type: integer
+          minimum: 0
+        nutrition:
+          $ref: '#/components/schemas/NutritionValues'
+        workouts:
+          $ref: '#/components/schemas/WorkoutMetrics'
+        averageMoodScore:
+          type: number
+          nullable: true
+    WeightAnalytics:
+      type: object
+      required: [range, points]
+      properties:
+        range:
+          $ref: '#/components/schemas/PeriodRange'
+        currentWeightKg:
+          type: number
+          nullable: true
+        changeKg:
+          type: number
+          nullable: true
+        bmi:
+          type: number
+          nullable: true
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+    ActivityAnalytics:
+      type: object
+      required: [range, workouts, totalSteps, points]
+      properties:
+        range:
+          $ref: '#/components/schemas/PeriodRange'
+        workouts:
+          $ref: '#/components/schemas/WorkoutMetrics'
+        totalSteps:
+          type: integer
+          minimum: 0
+        points:
+          type: array
+          description: '`value` — шаги, `secondaryValue` — минуты тренировок.'
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+    SleepAnalytics:
+      type: object
+      required: [range, averageDurationMinutes, averageQuality, points]
+      properties:
+        range:
+          $ref: '#/components/schemas/PeriodRange'
+        averageDurationMinutes:
+          type: number
+          nullable: true
+        averageQuality:
+          type: number
+          nullable: true
+        points:
+          type: array
+          description: '`value` — минуты, `secondaryValue` — качество 1–5.'
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+    NutritionAnalytics:
+      type: object
+      required: [range, totals, averages, points]
+      properties:
+        range:
+          $ref: '#/components/schemas/PeriodRange'
+        totals:
+          $ref: '#/components/schemas/NutritionValues'
+        averages:
+          $ref: '#/components/schemas/NutritionValues'
+        points:
+          type: array
+          description: '`value` — калории за день.'
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+    MoodAnalytics:
+      type: object
+      required: [range, averageMoodScore, points, topTags, topSymptoms]
+      properties:
+        range:
+          $ref: '#/components/schemas/PeriodRange'
+        averageMoodScore:
+          type: number
+          nullable: true
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimeSeriesPoint'
+        topTags:
+          type: array
+          items:
+            type: string
+        topSymptoms:
+          type: array
+          items:
+            type: string
+
+    ExportFormat:
+      type: string
+      enum: [csv, pdf]
+    ExportStatus:
+      type: string
+      enum: [created, processing, ready, failed]
+    ExportSection:
+      type: string
+      enum: [profile, goals, weight, sleep, water, mood, nutrition, workouts, steps, achievements]
+    CreateExportRequest:
+      type: object
+      additionalProperties: false
+      required: [format, from, to, sections]
+      properties:
+        format:
+          $ref: '#/components/schemas/ExportFormat'
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        sections:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/ExportSection'
+    ExportRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateExportRequest'
+        - type: object
+          required: [id, status, createdAt]
+          properties:
+            id:
+              type: integer
+              format: int64
+            status:
+              $ref: '#/components/schemas/ExportStatus'
+            fileName:
+              type: string
+              nullable: true
+            fileSizeBytes:
+              type: integer
+              format: int64
+              nullable: true
+            errorMessage:
+              type: string
+              nullable: true
+            createdAt:
+              type: string
+              format: date-time
+            readyAt:
+              type: string
+              format: date-time
+              nullable: true
+            expiresAt:
+              type: string
+              format: date-time
+              nullable: true
+
+    SupportStatus:
+      type: string
+      enum: [created, in_review, resolved, closed]
+    CreateSupportRequest:
+      type: object
+      additionalProperties: false
+      required: [subject, message]
+      properties:
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 200
+        message:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        category:
+          type: string
+          enum: [question, problem, complaint, billing, other]
+          default: question
+    SupportMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 5000
+    SupportMessage:
+      type: object
+      required: [id, authorType, message, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        authorType:
+          type: string
+          enum: [user, admin]
+        authorId:
+          type: integer
+          format: int64
+        message:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    SupportRequestSummary:
+      type: object
+      required: [id, subject, category, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+          description: Заполняется в административных ответах.
+        subject:
+          type: string
+        category:
+          type: string
+          enum: [question, problem, complaint, billing, other]
+        status:
+          $ref: '#/components/schemas/SupportStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+    SupportRequest:
+      allOf:
+        - $ref: '#/components/schemas/SupportRequestSummary'
+        - type: object
+          required: [messages]
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: '#/components/schemas/SupportMessage'
+
+    AiDisclaimer:
+      type: string
+      enum:
+        - Рекомендации ИИ носят информационный характер, не являются медицинским заключением и не заменяют консультацию врача.
+    AiRecommendationRequest:
+      type: object
+      additionalProperties: false
+      required: [focus, period]
+      properties:
+        focus:
+          type: string
+          enum: [general, sleep, nutrition, activity, hydration, mood]
+        period:
+          $ref: '#/components/schemas/AnalyticsPeriod'
+        question:
+          type: string
+          maxLength: 1000
+    AiTextResult:
+      type: object
+      required: [text, generatedAt, disclaimer]
+      properties:
+        text:
+          type: string
+          maxLength: 10000
+        generatedAt:
+          type: string
+          format: date-time
+        basedOn:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [sleep, water, nutrition, weight, mood, workouts, steps, goals]
+        disclaimer:
+          $ref: '#/components/schemas/AiDisclaimer'
+    AiWorkoutRequest:
+      type: object
+      additionalProperties: false
+      required: [intensity, bodyArea]
+      properties:
+        goalType:
+          $ref: '#/components/schemas/GoalType'
+        intensity:
+          $ref: '#/components/schemas/Intensity'
+        bodyArea:
+          $ref: '#/components/schemas/BodyArea'
+        durationMinutes:
+          type: integer
+          minimum: 5
+          maximum: 240
+        currentState:
+          type: string
+          maxLength: 1000
+    AiWorkoutResult:
+      type: object
+      required: [workouts, explanation, disclaimer]
+      properties:
+        workouts:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            $ref: '#/components/schemas/WorkoutSummary'
+        explanation:
+          type: string
+          maxLength: 5000
+        disclaimer:
+          $ref: '#/components/schemas/AiDisclaimer'
+    FoodRecognitionCandidate:
+      type: object
+      required: [name, confidence, estimatedAmountG, nutritionPer100g, nutritionTotal]
+      properties:
+        name:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        estimatedAmountG:
+          type: number
+          minimum: 0
+        nutritionPer100g:
+          $ref: '#/components/schemas/NutritionValues'
+        nutritionTotal:
+          $ref: '#/components/schemas/NutritionValues'
+    FoodRecognitionResult:
+      type: object
+      required: [candidates, requiresConfirmation, disclaimer]
+      properties:
+        candidates:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/FoodRecognitionCandidate'
+        requiresConfirmation:
+          type: boolean
+          enum: [true]
+        disclaimer:
+          $ref: '#/components/schemas/AiDisclaimer'
+    VoiceTranscriptionResult:
+      type: object
+      required: [text, context, confidence, requiresConfirmation, extractedData, disclaimer]
+      properties:
+        text:
+          type: string
+        context:
+          type: string
+          enum: [diary, nutrition]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        requiresConfirmation:
+          type: boolean
+          enum: [true]
+        extractedData:
+          type: object
+          additionalProperties: true
+          description: Черновые поля для соответствующей формы; автоматически не сохраняются.
+        disclaimer:
+          $ref: '#/components/schemas/AiDisclaimer'
+
+    SubscriptionDuration:
+      type: string
+      enum: [month, three_months, year]
+    SubscriptionPlan:
+      type: object
+      required: [id, duration, title, trialDays, appleProductId, googleProductId]
+      properties:
+        id:
+          type: string
+        duration:
+          $ref: '#/components/schemas/SubscriptionDuration'
+        title:
+          type: string
+        trialDays:
+          type: integer
+          minimum: 0
+        appleProductId:
+          type: string
+        googleProductId:
+          type: string
+    SubscriptionStatus:
+      type: string
+      enum: [none, trial, active, grace_period, expired]
+    Subscription:
+      type: object
+      required: [status, premiumAccess, autoRenew]
+      properties:
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        premiumAccess:
+          type: boolean
+        planId:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          enum: [apple, google]
+          nullable: true
+        startsAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        autoRenew:
+          type: boolean
+        managementUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Ссылка на управление автопродлением в магазине приложений.
+    ValidatePurchaseRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, productId, purchaseToken]
+      properties:
+        provider:
+          type: string
+          enum: [apple, google]
+        productId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        purchaseToken:
+          type: string
+          minLength: 20
+          maxLength: 10000
+        transactionId:
+          type: string
+          maxLength: 500
+
+    MetricValue:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: number
+        changePercent:
+          type: number
+          nullable: true
+    NamedMetric:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: number
+    AdminAnalytics:
+      type: object
+      required: [from, to, registeredUsers, activeUsers, premiumUsers, popularFeatures]
+      properties:
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        registeredUsers:
+          $ref: '#/components/schemas/MetricValue'
+        activeUsers:
+          $ref: '#/components/schemas/MetricValue'
+        premiumUsers:
+          $ref: '#/components/schemas/MetricValue'
+        popularFeatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/NamedMetric'
+    AdminUser:
+      type: object
+      required: [id, email, role, status, emailVerified, subscriptionStatus, createdAt, lastLoginAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        email:
+          type: string
+          format: email
+        firstName:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        emailVerified:
+          type: boolean
+        subscriptionStatus:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        createdAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+    LogLevel:
+      type: string
+      enum: [info, warning, error, critical]
+    LogEntry:
+      type: object
+      required: [id, timestamp, level, service, message]
+      properties:
+        id:
+          type: integer
+          format: int64
+        timestamp:
+          type: string
+          format: date-time
+        level:
+          $ref: '#/components/schemas/LogLevel'
+        service:
+          type: string
+        userId:
+          type: integer
+          format: int64
+          nullable: true
+        message:
+          type: string
+        stackTrace:
+          type: string
+          nullable: true
+        requestId:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminAction:
+      type: object
+      required: [id, adminId, action, entityType, entityId, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        adminId:
+          type: integer
+          format: int64
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        comment:
+          type: string
+          nullable: true
+        changes:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    BroadcastRequest:
+      type: object
+      additionalProperties: false
+      required: [title, body, audience]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        body:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        audience:
+          type: string
+          enum: [all, premium, non_premium, active]
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true

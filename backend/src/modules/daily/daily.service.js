@@ -1,22 +1,23 @@
 const repo = require('./daily.repository');
+const { ApiError } = require('../../utils/api-error');
+const {
+	ensureValidUserId,
+	normalizeOptionalNonNegativeInt,
+} = require('../../utils/validation');
 
 async function getToday(userId) {
-	return repo.getToday(userId);
+	return repo.getToday(ensureValidUserId(userId));
 }
 
 async function updateToday(userId, data) {
-	const steps = data.steps ? Number(data.steps) : null;
-	const calories = data.calories ? Number(data.calories) : null;
-
-	if (steps !== null && (isNaN(steps) || steps < 0)) {
-		throw new Error('Invalid steps');
+	if (!data || typeof data !== 'object' || Array.isArray(data)) {
+		throw new ApiError(400, 'Daily data is required');
 	}
 
-	if (calories !== null && (isNaN(calories) || calories < 0)) {
-		throw new Error('Invalid calories');
-	}
-
-	return repo.upsertToday(userId, { steps, calories });
+	return repo.upsertToday(ensureValidUserId(userId), {
+		steps: normalizeOptionalNonNegativeInt(data.steps, 'Steps'),
+		calories: normalizeOptionalNonNegativeInt(data.calories, 'Calories'),
+	});
 }
 
 module.exports = {

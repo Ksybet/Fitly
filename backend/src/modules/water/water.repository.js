@@ -1,48 +1,33 @@
-const { sql, poolPromise } = require('../../config/db');
+const { pool } = require('../../config/db');
 
 async function getTodayWater(userId) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`SELECT COALESCE(SUM(amount_ml), 0)::integer AS "totalMl"
+		 FROM water_entries
+		 WHERE user_id = $1
+		   AND recorded_at::date = CURRENT_DATE`,
+		[userId],
+	);
 
-	const result = await pool
-		.request()
-		.input('userId', sql.Int, userId)
-		.query(`
-			SELECT
-				ISNULL(SUM(amount_ml), 0) AS totalMl
-			FROM WaterEntries
-			WHERE user_id = @userId
-			  AND CAST(recorded_at AS DATE) = CAST(GETDATE() AS DATE)
-		`);
-
-	return result.recordset[0];
+	return result.rows[0];
 }
 
 async function addWater(userId, amountMl) {
-	const pool = await poolPromise;
-
-	await pool
-		.request()
-		.input('userId', sql.Int, userId)
-		.input('amountMl', sql.Int, amountMl)
-		.query(`
-			INSERT INTO WaterEntries (user_id, amount_ml)
-			VALUES (@userId, @amountMl)
-		`);
+	await pool.query(
+		'INSERT INTO water_entries (user_id, amount_ml) VALUES ($1, $2)',
+		[userId, amountMl],
+	);
 
 	return getTodayWater(userId);
 }
 
 async function resetTodayWater(userId) {
-	const pool = await poolPromise;
-
-	await pool
-		.request()
-		.input('userId', sql.Int, userId)
-		.query(`
-			DELETE FROM WaterEntries
-			WHERE user_id = @userId
-			  AND CAST(recorded_at AS DATE) = CAST(GETDATE() AS DATE)
-		`);
+	await pool.query(
+		`DELETE FROM water_entries
+		 WHERE user_id = $1
+		   AND recorded_at::date = CURRENT_DATE`,
+		[userId],
+	);
 
 	return getTodayWater(userId);
 }

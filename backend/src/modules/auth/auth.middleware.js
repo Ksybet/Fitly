@@ -1,13 +1,11 @@
 const { verifyAccessToken } = require('../../utils/token');
+const { ApiError } = require('../../utils/api-error');
 
 function authMiddleware(req, res, next) {
 	const authHeader = req.headers.authorization;
 
 	if (!authHeader || !authHeader.startsWith('Bearer ')) {
-		return res.status(401).json({
-			success: false,
-			message: 'Unauthorized',
-		});
+		return next(new ApiError(401, 'Unauthorized'));
 	}
 
 	const token = authHeader.replace('Bearer ', '');
@@ -17,10 +15,7 @@ function authMiddleware(req, res, next) {
 		req.user = payload;
 		next();
 	} catch (error) {
-		return res.status(401).json({
-			success: false,
-			message: 'Invalid or expired token',
-		});
+		return next(new ApiError(401, 'Invalid or expired token'));
 	}
 }
 

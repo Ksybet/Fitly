@@ -1,129 +1,53 @@
-const { sql, poolPromise } = require('../../config/db');
+const { pool } = require('../../config/db');
+
+const userColumns = `
+	id,
+	email,
+	password_hash AS "passwordHash",
+	role,
+	is_active AS "isActive",
+	created_at AS "createdAt",
+	updated_at AS "updatedAt"
+`;
 
 async function findUserByEmail(email) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`SELECT ${userColumns}
+		 FROM users
+		 WHERE email = $1
+		 LIMIT 1`,
+		[email],
+	);
 
-	const result = await pool
-		.request()
-		.input('email', sql.NVarChar, email)
-		.query(`
-			SELECT TOP 1
-				id,
-				email,
-				passwordHash,
-				role,
-				isActive,
-				createdAt,
-				updatedAt
-			FROM Users
-			WHERE email = @email
-		`);
-
-	return result.recordset[0] || null;
+	return result.rows[0] || null;
 }
 
 async function createUser(userData) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`INSERT INTO users (email, password_hash, role, is_active)
+		 VALUES ($1, $2, $3, $4)
+		 RETURNING ${userColumns}`,
+		[userData.email, userData.passwordHash, userData.role, userData.isActive],
+	);
 
-	const result = await pool
-		.request()
-		.input('email', sql.NVarChar, userData.email)
-		.input('passwordHash', sql.NVarChar, userData.passwordHash)
-		.input('role', sql.NVarChar, userData.role)
-		.input('isActive', sql.Bit, userData.isActive)
-		.query(`
-			INSERT INTO Users (
-				email,
-				passwordHash,
-				role,
-				isActive,
-				createdAt,
-				updatedAt
-			)
-			OUTPUT
-				INSERTED.id,
-				INSERTED.email,
-				INSERTED.passwordHash,
-				INSERTED.role,
-				INSERTED.isActive,
-				INSERTED.createdAt,
-				INSERTED.updatedAt
-			VALUES (
-				@email,
-				@passwordHash,
-				@role,
-				@isActive,
-				GETDATE(),
-				GETDATE()
-			)
-		`);
-
-	return result.recordset[0];
+	return result.rows[0];
 }
 
 async function findUserById(userId) {
-	const pool = await poolPromise;
+	const result = await pool.query(
+		`SELECT ${userColumns}
+		 FROM users
+		 WHERE id = $1
+		 LIMIT 1`,
+		[Number(userId)],
+	);
 
-	const result = await pool
-		.request()
-		.input('userId', sql.Int, Number(userId))
-		.query(`
-			SELECT TOP 1
-				id,
-				email,
-				passwordHash,
-				role,
-				isActive,
-				createdAt,
-				updatedAt
-			FROM Users
-			WHERE id = @userId
-		`);
-
-	return result.recordset[0] || null;
+	return result.rows[0] || null;
 }
 
 async function deleteUserById(userId) {
-	const pool = await poolPromise;
-	const transaction = new sql.Transaction(pool);
-
-	await transaction.begin();
-
-	try {
-		const request = new sql.Request(transaction);
-		request.input('userId', sql.Int, Number(userId));
-
-		await request.query(`
-			IF OBJECT_ID('dbo.Profiles', 'U') IS NOT NULL
-				DELETE FROM Profiles WHERE user_id = @userId;
-
-			IF OBJECT_ID('dbo.Goals', 'U') IS NOT NULL
-				DELETE FROM Goals WHERE user_id = @userId;
-
-			IF OBJECT_ID('dbo.WaterEntries', 'U') IS NOT NULL
-				DELETE FROM WaterEntries WHERE user_id = @userId;
-
-			IF OBJECT_ID('dbo.SleepEntries', 'U') IS NOT NULL
-				DELETE FROM SleepEntries WHERE user_id = @userId;
-
-			IF OBJECT_ID('dbo.MoodEntries', 'U') IS NOT NULL
-				DELETE FROM MoodEntries WHERE user_id = @userId;
-
-			IF OBJECT_ID('dbo.Favorites', 'U') IS NOT NULL
-				DELETE FROM Favorites WHERE user_id = @userId;
-
-			IF OBJECT_ID('dbo.DailyTracking', 'U') IS NOT NULL
-				DELETE FROM DailyTracking WHERE user_id = @userId;
-
-			DELETE FROM Users WHERE id = @userId;
-		`);
-
-		await transaction.commit();
-		return true;
-	} catch (error) {
-		await transaction.rollback();
-		throw error;
-	}
+	await pool.query('DELETE FROM users WHERE id = $1', [Number(userId)]);
+	return true;
 }
 
 module.exports = {

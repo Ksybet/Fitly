@@ -6,19 +6,33 @@ const {
 const bcrypt = require('bcryptjs');
 const { ApiError } = require('../../utils/api-error');
 const { findUserById, deleteUserById } = require('../user/user.repository');
+const { ensureValidUserId } = require('../../utils/validation');
+
+function hasOwn(object, property) {
+	return Object.prototype.hasOwnProperty.call(object, property);
+}
+
+function normalizeFirstName(value) {
+	if (value === null) return null;
+	if (typeof value !== 'string') {
+		throw new ApiError(400, 'firstName must be a string');
+	}
+
+	return value.trim();
+}
 
 async function getProfile(userId) {
-	let profile = await findProfileByUserId(userId);
+	const normalizedUserId = ensureValidUserId(userId);
+	let profile = await findProfileByUserId(normalizedUserId);
 
 	if (!profile) {
 		profile = await createProfile({
-			userId,
+			userId: normalizedUserId,
 			firstName: '',
 			birthDate: null,
 			gender: null,
 			heightCm: null,
 			weightKg: null,
-			heightCm: null,
 			updatedAt: new Date().toISOString(),
 		});
 	}
@@ -27,32 +41,34 @@ async function getProfile(userId) {
 }
 
 async function updateProfile(userId, data) {
-	const existingProfile = await getProfile(userId);
+	if (!data || typeof data !== 'object' || Array.isArray(data)) {
+		throw new ApiError(400, 'Profile data is required');
+	}
+
+	const normalizedUserId = ensureValidUserId(userId);
+	const existingProfile = await getProfile(normalizedUserId);
 
 	const updateData = {
 		firstName:
-			data.firstName !== undefined
-				? data.firstName.trim()
+			hasOwn(data, 'firstName')
+				? normalizeFirstName(data.firstName)
 				: existingProfile.firstName,
 
 		birthDate:
-			data.birthDate !== undefined ? data.birthDate : existingProfile.birthDate,
+			hasOwn(data, 'birthDate') ? data.birthDate : existingProfile.birthDate,
 
-		gender: data.gender !== undefined ? data.gender : existingProfile.gender,
+		gender: hasOwn(data, 'gender') ? data.gender : existingProfile.gender,
 
 		heightCm:
-			data.heightCm !== undefined ? data.heightCm : existingProfile.heightCm,
+			hasOwn(data, 'heightCm') ? data.heightCm : existingProfile.heightCm,
 
 		weightKg:
-			data.weightKg !== undefined ? data.weightKg : existingProfile.weightKg,
-
-		heightCm:
-			data.heightCm !== undefined ? data.heightCm : existingProfile.heightCm,
+			hasOwn(data, 'weightKg') ? data.weightKg : existingProfile.weightKg,
 
 		updatedAt: new Date().toISOString(),
 	};
 
-	return await updateProfileByUserId(userId, updateData);
+	return updateProfileByUserId(normalizedUserId, updateData);
 }
 
 async function deleteAccount(userId, password) {
@@ -60,7 +76,8 @@ async function deleteAccount(userId, password) {
 		throw new ApiError(400, 'Password is required');
 	}
 
-	const user = await findUserById(userId);
+	const normalizedUserId = ensureValidUserId(userId);
+	const user = await findUserById(normalizedUserId);
 
 	if (!user) {
 		throw new ApiError(404, 'User not found');
@@ -72,7 +89,7 @@ async function deleteAccount(userId, password) {
 		throw new ApiError(401, 'Invalid password');
 	}
 
-	await deleteUserById(userId);
+	await deleteUserById(normalizedUserId);
 
 	return true;
 }
