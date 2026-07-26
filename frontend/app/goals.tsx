@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
 	View,
 	Text,
@@ -13,6 +13,13 @@ import { Ionicons, Feather, MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getGoals, updateGoals } from '../src/api/goals.api';
+import {
+	buildManagedGoals,
+	getPassthroughGoals,
+	mapGoalsToManaged,
+} from '../src/api/goals.mapper';
+import { getApiErrorMessage } from '../src/api/api-error';
+import type { Goal } from '../src/api/contracts';
 
 type GoalsState = {
 	stepsGoal: string;
@@ -20,11 +27,6 @@ type GoalsState = {
 	weightGoal: string;
 	sleepGoalHours: string;
 	waterGoal: string;
-};
-
-type ApiGoal = {
-	goalType: string;
-	targetValue: number;
 };
 
 export default function GoalsScreen() {
@@ -39,115 +41,37 @@ export default function GoalsScreen() {
 	});
 
 	const [isSaving, setIsSaving] = useState(false);
+	const [sourceGoals, setSourceGoals] = useState<Goal[]>([]);
 
-	useEffect(() => {
-		loadGoals();
-	}, []);
-
-	const mapApiGoalsToState = (apiGoals: ApiGoal[]) => {
-		const nextGoals: GoalsState = {
-			stepsGoal: '',
-			calorieGoal: '',
-			weightGoal: '',
-			sleepGoalHours: '',
-			waterGoal: '',
-		};
-
-		apiGoals.forEach(goal => {
-			const value =
-				goal.targetValue !== undefined && goal.targetValue !== null
-					? String(goal.targetValue)
-					: '';
-
-			if (goal.goalType === 'steps') {
-				nextGoals.stepsGoal = value;
-			}
-
-			if (goal.goalType === 'calories') {
-				nextGoals.calorieGoal = value;
-			}
-
-			if (goal.goalType === 'weight') {
-				nextGoals.weightGoal = value;
-			}
-
-			if (goal.goalType === 'sleep') {
-				nextGoals.sleepGoalHours = value;
-			}
-
-			if (goal.goalType === 'water') {
-				nextGoals.waterGoal = value;
-			}
-		});
-
-		return nextGoals;
-	};
-
-	const mapStateToApiGoals = () => {
-		const result = [];
-
-		if (goals.stepsGoal) {
-			result.push({
-				goalType: 'steps',
-				title: 'Цель по шагам',
-				targetValue: Number(goals.stepsGoal),
-				unit: 'steps',
-				status: 'active',
-			});
-		}
-
-		if (goals.calorieGoal) {
-			result.push({
-				goalType: 'calories',
-				title: 'Цель по калориям',
-				targetValue: Number(goals.calorieGoal),
-				unit: 'kcal',
-				status: 'active',
-			});
-		}
-
-		if (goals.weightGoal) {
-			result.push({
-				goalType: 'weight',
-				title: 'Целевой вес',
-				targetValue: Number(goals.weightGoal),
-				unit: 'kg',
-				status: 'active',
-			});
-		}
-
-		if (goals.sleepGoalHours) {
-			result.push({
-				goalType: 'sleep',
-				title: 'Цель сна',
-				targetValue: Number(goals.sleepGoalHours),
-				unit: 'hours',
-				status: 'active',
-			});
-		}
-
-		if (goals.waterGoal) {
-			result.push({
-				goalType: 'water',
-				title: 'Цель по воде',
-				targetValue: Number(goals.waterGoal),
-				unit: 'l',
-				status: 'active',
-			});
-		}
-
-		return result;
-	};
-
-	const loadGoals = async () => {
+	const loadGoals = useCallback(async () => {
 		try {
 			const apiGoals = await getGoals();
-			setGoals(mapApiGoalsToState(apiGoals));
-		} catch (e) {
-			console.log('Ошибка загрузки целей', e);
-			Alert.alert('Ошибка', 'Не удалось загрузить цели');
+			const managed = mapGoalsToManaged(apiGoals);
+
+			setSourceGoals(apiGoals);
+			setGoals({
+				stepsGoal: managed.stepsGoal === null ? '' : String(managed.stepsGoal),
+				calorieGoal:
+					managed.calorieGoal === null ? '' : String(managed.calorieGoal),
+				weightGoal:
+					managed.weightGoal === null ? '' : String(managed.weightGoal),
+				sleepGoalHours:
+					managed.sleepGoalHours === null
+						? ''
+						: String(managed.sleepGoalHours),
+				waterGoal: managed.waterGoal === null ? '' : String(managed.waterGoal),
+			});
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(requestError, 'Не удалось загрузить цели'),
+			);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		void loadGoals();
+	}, [loadGoals]);
 
 	const handleChange = (field: keyof GoalsState, value: string) => {
 		let normalized = value;
@@ -217,13 +141,27 @@ export default function GoalsScreen() {
 		try {
 			setIsSaving(true);
 
-			const payload = mapStateToApiGoals();
+			const payload = [
+				...buildManagedGoals(goals),
+				...getPassthroughGoals(sourceGoals),
+			];
+
+			if (payload.length > 10) {
+				Alert.alert(
+					'Ошибка',
+					'Контракт допускает не более 10 активных целей',
+				);
+				return;
+			}
+
 			await updateGoals(payload);
 
 			router.back();
-		} catch (e) {
-			console.log('Ошибка сохранения целей', e);
-			Alert.alert('Ошибка', 'Не удалось сохранить цели');
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(requestError, 'Не удалось сохранить цели'),
+			);
 		} finally {
 			setIsSaving(false);
 		}

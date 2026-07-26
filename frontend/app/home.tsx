@@ -19,6 +19,7 @@ import { AuthContext } from '../src/context/AuthContext';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getMyProfile } from '../src/api/profile.api';
 import { getGoals } from '../src/api/goals.api';
+import { mapGoalsToManaged } from '../src/api/goals.mapper';
 import { getTodayWater, addWater, resetTodayWater } from '../src/api/water.api';
 import { getTodaySleep } from '../src/api/sleep.api';
 import { getTodayMood } from '../src/api/mood.api';
@@ -235,30 +236,7 @@ export default function HomeScreen() {
 				heightCm: profile?.heightCm ?? null,
 			});
 
-			const nextGoals: GoalsState = {
-				stepsGoal: null,
-				calorieGoal: null,
-				weightGoal: null,
-				sleepGoalHours: null,
-				waterGoal: null,
-			};
-
-			apiGoals.forEach((goal: any) => {
-				const value =
-					goal.targetValue !== undefined &&
-					goal.targetValue !== null &&
-					Number(goal.targetValue) > 0
-						? Number(goal.targetValue)
-						: null;
-
-				if (goal.goalType === 'steps') nextGoals.stepsGoal = value;
-				if (goal.goalType === 'calories') nextGoals.calorieGoal = value;
-				if (goal.goalType === 'weight') nextGoals.weightGoal = value;
-				if (goal.goalType === 'sleep') nextGoals.sleepGoalHours = value;
-				if (goal.goalType === 'water') nextGoals.waterGoal = value;
-			});
-
-			setGoals(nextGoals);
+			setGoals(mapGoalsToManaged(apiGoals));
 
 			setDailyData({
 				steps: Number(todayDaily?.steps ?? 0),
