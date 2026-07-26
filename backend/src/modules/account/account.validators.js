@@ -11,17 +11,10 @@ function validateDeleteAccountRequest(req, res, next) {
 			message: 'Request body must be an object',
 		});
 	} else {
-		for (const field of Object.keys(body)) {
-			if (field !== 'password' && field !== 'confirmation') {
-				details.push({
-					field,
-					code: 'UNKNOWN_FIELD',
-					message: `${field} is not allowed`,
-				});
-			}
-		}
-
-		if (typeof body.password !== 'string' || body.password.length === 0) {
+		if (
+			!Object.prototype.hasOwnProperty.call(body, 'password')
+			|| typeof body.password !== 'string'
+		) {
 			details.push({
 				field: 'password',
 				code: 'REQUIRED',
