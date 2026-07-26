@@ -31,4 +31,6 @@ module.exports = {
 	CLIENT_URL: process.env.CLIENT_URL || 'http://localhost:3001',
 	DATABASE_URL: process.env.DATABASE_URL,
 	TEST_DATABASE_URL: process.env.TEST_DATABASE_URL,
+	ADMIN_EMAIL: process.env.ADMIN_EMAIL || undefined,
+	ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || undefined,
 };

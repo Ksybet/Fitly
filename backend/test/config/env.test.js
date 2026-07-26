@@ -1,3 +1,5 @@
+jest.mock('dotenv', () => ({ config: jest.fn() }));
+
 describe('environment configuration', () => {
 	const originalEnv = { ...process.env };
 
@@ -38,5 +40,17 @@ describe('environment configuration', () => {
 		expect(() => require('../../src/config/env')).toThrow(
 			'DATABASE_URL environment variable is required',
 		);
+	});
+
+	test('exposes optional administrator bootstrap settings', () => {
+		process.env.JWT_SECRET = 'secret';
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
+		process.env.ADMIN_EMAIL = 'admin@example.com';
+		process.env.ADMIN_PASSWORD = 'Strong!Admin123';
+		jest.resetModules();
+
+		const env = require('../../src/config/env');
+		expect(env.ADMIN_EMAIL).toBe('admin@example.com');
+		expect(env.ADMIN_PASSWORD).toBe('Strong!Admin123');
 	});
 });

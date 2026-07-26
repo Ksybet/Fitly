@@ -1,9 +1,16 @@
 const app = require('./app');
 const env = require('./config/env');
 const { connectDatabase, closeDatabase } = require('./config/db');
+const {
+	bootstrapAdministrator,
+} = require('./modules/admin/admin-bootstrap.service');
 
 async function startServer() {
 	await connectDatabase();
+	await bootstrapAdministrator({
+		email: env.ADMIN_EMAIL,
+		password: env.ADMIN_PASSWORD,
+	});
 
 	const server = app.listen(env.PORT, env.HOST, () => {
 		console.log(`Fitly API is listening on ${env.HOST}:${env.PORT}`);

@@ -260,4 +260,18 @@ describe('PostgreSQL HTTP contracts', () => {
 		);
 		expect(cascadeResult.rows[0].count).toBe(7);
 	});
+
+	test('restricts user roles to user and admin', async () => {
+		await pool.query(
+			`INSERT INTO users (email, password_hash, role)
+			 VALUES ($1, $2, $3)`,
+			['admin@example.com', 'hash', 'admin'],
+		);
+
+		await expect(pool.query(
+			`INSERT INTO users (email, password_hash, role)
+			 VALUES ($1, $2, $3)`,
+			['invalid@example.com', 'hash', 'operator'],
+		)).rejects.toMatchObject({ code: '23514' });
+	});
 });
