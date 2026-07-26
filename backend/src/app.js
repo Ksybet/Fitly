@@ -11,6 +11,10 @@ const moodRoutes = require('./modules/mood/mood.routes');
 const favoritesRoutes = require('./modules/favorites/favorites.routes');
 const dailyRoutes = require('./modules/daily/daily.routes');
 
+const {
+	authMiddleware,
+	requireRole,
+} = require('./modules/auth/auth.middleware');
 const { errorMiddleware } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -44,6 +48,7 @@ app.use('/api/v1/sleep', sleepRoutes);
 app.use('/api/v1/mood', moodRoutes);
 app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/daily', dailyRoutes);
+app.use('/api/v1/admin', authMiddleware, requireRole('admin'));
 
 app.use((req, res) => {
 	res.status(404).json({
