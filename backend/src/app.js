@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const env = require('./config/env');
 
 const authRoutes = require('./modules/auth/auth.routes');
 const goalsRoutes = require('./modules/goals/goals.routes');
@@ -14,6 +15,7 @@ const { errorMiddleware } = require('./middlewares/error.middleware');
 
 const app = express();
 
+app.set('trust proxy', env.TRUST_PROXY_HOPS);
 app.use(express.json());
 
 app.use(

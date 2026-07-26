@@ -4,7 +4,13 @@ async function login(req, res, next) {
 	try {
 		const { login, password, appVersion } = req.body;
 
-		const result = await loginUser({ login, password, appVersion });
+		const result = await loginUser({
+			login,
+			password,
+			appVersion,
+			ipAddress: req.ip,
+			device: req.get('user-agent'),
+		});
 
 		res.status(200).json({
 			success: true,

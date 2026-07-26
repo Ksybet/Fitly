@@ -3,6 +3,7 @@ jest.mock('../../src/config/db', () => ({
 }));
 
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const app = require('../../src/app');
@@ -19,6 +20,8 @@ function createAuthorization(
 }
 
 describe('HTTP application contracts', () => {
+	beforeEach(() => pool.query.mockReset());
+
 	test('GET /health returns 200 without a database connection', async () => {
 		await request(app).get('/health').expect(200, { success: true, data: 'OK' });
 	});
@@ -64,6 +67,50 @@ describe('HTTP application contracts', () => {
 			.expect(response => {
 				expect(response.body.data.user).toMatchObject({ userId: 7, role: 'admin' });
 			});
+	});
+
+	test('an administrator login audits proxy and device metadata', async () => {
+		const password = 'Strong!Admin123';
+		const passwordHash = await bcrypt.hash(password, 4);
+		pool.query
+			.mockResolvedValueOnce({
+				rows: [{
+					id: 7,
+					email: 'admin@example.com',
+					passwordHash,
+					role: 'admin',
+					isActive: true,
+				}],
+			})
+			.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+
+		await request(app)
+			.post('/api/v1/auth/login')
+			.set('X-Forwarded-For', '203.0.113.10')
+			.set('User-Agent', 'Fitly Admin Test')
+			.send({
+				login: 'admin@example.com',
+				password,
+				appVersion: '1.2.3',
+			})
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.user).toEqual({
+					id: 7,
+					email: 'admin@example.com',
+					role: 'admin',
+				});
+			});
+
+		expect(pool.query.mock.calls[1][1]).toEqual([
+			7,
+			'admin@example.com',
+			true,
+			null,
+			'203.0.113.10',
+			'Fitly Admin Test',
+			'1.2.3',
+		]);
 	});
 
 	test.each([

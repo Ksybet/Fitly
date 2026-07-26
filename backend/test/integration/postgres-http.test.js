@@ -1,8 +1,10 @@
 const request = require('supertest');
+const bcrypt = require('bcryptjs');
 const app = require('../../src/app');
 const { pool, closeDatabase } = require('../../src/config/db');
 
 const appTables = [
+	'admin_login_attempts',
 	'favorites',
 	'daily_tracking',
 	'mood_entries',
@@ -273,5 +275,107 @@ describe('PostgreSQL HTTP contracts', () => {
 			 VALUES ($1, $2, $3)`,
 			['invalid@example.com', 'hash', 'operator'],
 		)).rejects.toMatchObject({ code: '23514' });
+	});
+
+	test('audits administrator login attempts and preserves them after account deletion', async () => {
+		const password = 'Strong!Admin123';
+		const passwordHash = await bcrypt.hash(password, 4);
+		const userResult = await pool.query(
+			`INSERT INTO users (email, password_hash, role, is_active)
+			 VALUES ($1, $2, 'admin', TRUE)
+			 RETURNING id`,
+			['admin@example.com', passwordHash],
+		);
+		const userId = userResult.rows[0].id;
+
+		await request(app)
+			.post('/api/v1/auth/login')
+			.set('X-Forwarded-For', '203.0.113.10')
+			.set('User-Agent', 'Fitly Admin Integration')
+			.send({
+				login: 'admin@example.com',
+				password,
+				appVersion: '1.2.3',
+			})
+			.expect(200);
+
+		await request(app)
+			.post('/api/v1/auth/login')
+			.set('X-Forwarded-For', '203.0.113.11')
+			.set('User-Agent', 'Fitly Admin Integration')
+			.send({
+				login: 'admin@example.com',
+				password: 'wrong-password',
+				appVersion: '1.2.3',
+			})
+			.expect(401, { success: false, message: 'Invalid credentials' });
+
+		await pool.query(
+			'UPDATE users SET is_active = FALSE WHERE id = $1',
+			[userId],
+		);
+
+		await request(app)
+			.post('/api/v1/auth/login')
+			.set('X-Forwarded-For', '203.0.113.12')
+			.set('User-Agent', 'Fitly Admin Integration')
+			.send({
+				login: 'admin@example.com',
+				password,
+				appVersion: '1.2.3',
+			})
+			.expect(403, { success: false, message: 'User account is inactive' });
+
+		const attemptsResult = await pool.query(
+			`SELECT
+				user_id AS "userId",
+				email,
+				succeeded,
+				failure_reason AS "failureReason",
+				ip_address::text AS "ipAddress",
+				device,
+				app_version AS "appVersion",
+				created_at AS "createdAt"
+			 FROM admin_login_attempts
+			 ORDER BY id`,
+		);
+
+		expect(attemptsResult.rows).toEqual([
+			expect.objectContaining({
+				userId,
+				email: 'admin@example.com',
+				succeeded: true,
+				failureReason: null,
+				ipAddress: '203.0.113.10/32',
+				device: 'Fitly Admin Integration',
+				appVersion: '1.2.3',
+				createdAt: expect.any(Date),
+			}),
+			expect.objectContaining({
+				userId,
+				succeeded: false,
+				failureReason: 'invalid_password',
+				ipAddress: '203.0.113.11/32',
+			}),
+			expect.objectContaining({
+				userId,
+				succeeded: false,
+				failureReason: 'inactive_account',
+				ipAddress: '203.0.113.12/32',
+			}),
+		]);
+
+		await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+		const preservedResult = await pool.query(
+			`SELECT user_id AS "userId", email
+			 FROM admin_login_attempts
+			 ORDER BY id`,
+		);
+		expect(preservedResult.rows).toHaveLength(3);
+		expect(preservedResult.rows).toEqual(
+			expect.arrayContaining([
+				{ userId: null, email: 'admin@example.com' },
+			]),
+		);
 	});
 });

@@ -9,7 +9,7 @@
 		"migrate:up": "node-pg-migrate up",
 		"migrate:down": "node-pg-migrate down",
 		"migrate:test": "node-pg-migrate up --database-url-var TEST_DATABASE_URL",
-		"migrate:test:down": "node-pg-migrate down 9 --database-url-var TEST_DATABASE_URL",
+		"migrate:test:down": "node-pg-migrate down 10 --database-url-var TEST_DATABASE_URL",
 		"test": "jest --runInBand",
 		"test:integration": "npm run migrate:test && jest --runInBand --config jest.integration.config.js",
 		"test:all": "npm test && npm run test:integration",
