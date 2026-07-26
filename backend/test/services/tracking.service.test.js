@@ -35,22 +35,54 @@ describe('goals service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
 	test('gets goals with a normalized user id', async () => {
-		const goals = [{ id: 1, title: 'Walk' }];
+		const createdAt = new Date('2026-07-26T12:00:00.000Z');
+		const goals = [{
+			id: 1,
+			goalType: 'steps',
+			title: 'Walk',
+			targetValue: 5000,
+			unit: 'steps',
+			startsOn: '2026-07-26',
+			endsOn: null,
+			status: 'created',
+			currentValue: null,
+			progressPercent: 0,
+			createdAt,
+			completedAt: null,
+		}];
 		goalsRepository.getGoalsByUserId.mockResolvedValueOnce(goals);
 
-		await expect(goalsService.getGoals('7')).resolves.toBe(goals);
+		await expect(goalsService.getGoals('7')).resolves.toEqual([{
+			id: 1,
+			goalType: 'steps',
+			title: 'Walk',
+			targetValue: 5000,
+			unit: 'steps',
+			startsOn: '2026-07-26',
+			endsOn: null,
+			status: 'created',
+			currentValue: null,
+			progressPercent: 0,
+			createdAt: '2026-07-26T12:00:00.000Z',
+			completedAt: null,
+		}]);
 		expect(goalsRepository.getGoalsByUserId).toHaveBeenCalledWith(7);
 	});
 
-	test('rejects malformed goals and trims required values', async () => {
-		await expect(goalsService.updateGoals(1, {})).rejects.toMatchObject({ status: 400 });
-		await expect(goalsService.updateGoals(1, [{ goalType: 'steps', title: ' ' }]))
-			.rejects.toMatchObject({ status: 400 });
+	test('replaces goals without coercing contract values', async () => {
+		const input = [{
+			goalType: 'steps',
+			title: 'Walk',
+			targetValue: 5000,
+			unit: 'steps',
+			startsOn: '2026-07-26',
+			endsOn: null,
+		}];
 		goalsRepository.replaceGoals.mockResolvedValueOnce([]);
-		await goalsService.updateGoals(1, [{ goalType: ' steps ', title: ' Walk ', targetValue: '5000' }]);
-		expect(goalsRepository.replaceGoals).toHaveBeenCalledWith(1, [{
-			goalType: 'steps', title: 'Walk', targetValue: 5000,
-		}]);
+
+		await goalsService.updateGoals(1, input);
+
+		expect(goalsRepository.replaceGoals).toHaveBeenCalledWith(1, input);
 	});
 
 	test('passes an empty list through as a deterministic replacement', async () => {

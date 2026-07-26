@@ -7,7 +7,7 @@ async function getGoals(req, res, next) {
 
 		const goals = await goalsService.getGoals(userId);
 
-		return sendSuccess(res, goals);
+		return sendSuccess(res, { goals });
 	} catch (error) {
 		next(error);
 	}
@@ -20,7 +20,7 @@ async function updateGoals(req, res, next) {
 
 		const updatedGoals = await goalsService.updateGoals(userId, goals);
 
-		return sendSuccess(res, updatedGoals);
+		return sendSuccess(res, { goals: updatedGoals });
 	} catch (error) {
 		next(error);
 	}
