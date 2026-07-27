@@ -1,4 +1,5 @@
 const goalsService = require('./goals.service');
+const { sendSuccess } = require('../../utils/http-response');
 
 async function getGoals(req, res, next) {
 	try {
@@ -6,10 +7,7 @@ async function getGoals(req, res, next) {
 
 		const goals = await goalsService.getGoals(userId);
 
-		return res.json({
-			success: true,
-			data: goals,
-		});
+		return sendSuccess(res, { goals });
 	} catch (error) {
 		next(error);
 	}
@@ -22,10 +20,7 @@ async function updateGoals(req, res, next) {
 
 		const updatedGoals = await goalsService.updateGoals(userId, goals);
 
-		return res.json({
-			success: true,
-			data: updatedGoals,
-		});
+		return sendSuccess(res, { goals: updatedGoals });
 	} catch (error) {
 		next(error);
 	}

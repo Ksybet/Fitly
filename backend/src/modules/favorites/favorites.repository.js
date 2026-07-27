@@ -1,14 +1,10 @@
 const { pool } = require('../../config/db');
 
 const favoriteColumns = `
-	id,
-	user_id AS "userId",
 	water,
 	weight,
 	height,
-	bmi,
-	created_at AS "createdAt",
-	updated_at AS "updatedAt"
+	bmi
 `;
 
 async function getFavorites(userId) {

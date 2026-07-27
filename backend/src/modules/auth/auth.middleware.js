@@ -12,6 +12,16 @@ function authMiddleware(req, res, next) {
 
 	try {
 		const payload = verifyAccessToken(token);
+
+		if (
+			!payload
+			|| !Number.isInteger(payload.userId)
+			|| payload.userId < 1
+			|| !['user', 'admin'].includes(payload.role)
+		) {
+			throw new Error('Invalid access token claims');
+		}
+
 		req.user = payload;
 		next();
 	} catch (error) {

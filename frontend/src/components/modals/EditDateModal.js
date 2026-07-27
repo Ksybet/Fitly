@@ -72,7 +72,7 @@ const EditDateModal = ({
 		if (day > maxDay) {
 			setDay(maxDay);
 		}
-	}, [month, year]);
+	}, [day, month, year]);
 
 	const handleSave = () => {
 		const formattedDay = String(day).padStart(2, '0');

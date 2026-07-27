@@ -1,4 +1,5 @@
 const moodService = require('./mood.service');
+const { sendSuccess } = require('../../utils/http-response');
 
 async function getTodayMood(req, res, next) {
 	try {
@@ -6,10 +7,7 @@ async function getTodayMood(req, res, next) {
 
 		const mood = await moodService.getTodayMood(userId);
 
-		return res.json({
-			success: true,
-			data: mood,
-		});
+		return sendSuccess(res, mood);
 	} catch (error) {
 		next(error);
 	}
@@ -21,10 +19,7 @@ async function updateTodayMood(req, res, next) {
 
 		const mood = await moodService.updateTodayMood(userId, req.body);
 
-		return res.json({
-			success: true,
-			data: mood,
-		});
+		return sendSuccess(res, mood);
 	} catch (error) {
 		next(error);
 	}

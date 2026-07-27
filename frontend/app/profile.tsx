@@ -1,5 +1,6 @@
 import React, { useContext } from 'react';
 import {
+	Alert,
 	View,
 	Text,
 	StyleSheet,
@@ -13,6 +14,7 @@ import { router } from 'expo-router';
 import { AuthContext } from '../src/context/AuthContext';
 import { ThemeContext } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
+import { getApiErrorMessage } from '../src/api/api-error';
 
 type Colors = any;
 
@@ -140,6 +142,19 @@ export default function ProfileScreen() {
 	const { colors } = useContext(ThemeContext);
 
 	const email = user?.email || 'Не указано';
+	const handleLogout = async () => {
+		try {
+			await logout();
+		} catch (requestError) {
+			Alert.alert(
+				'Не удалось выйти',
+				getApiErrorMessage(
+					requestError,
+					'Сервер не подтвердил завершение сессии. Попробуйте ещё раз.',
+				),
+			);
+		}
+	};
 
 	return (
 		<SafeAreaView
@@ -231,7 +246,7 @@ export default function ProfileScreen() {
 
 				<TouchableOpacity
 					style={styles.logoutButton}
-					onPress={logout}
+					onPress={() => void handleLogout()}
 					activeOpacity={0.8}
 				>
 					<Text style={[styles.logoutText, { color: colors.danger }]}>

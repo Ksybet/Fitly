@@ -9,16 +9,18 @@ import {
 	TextInput,
 	Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-
-const DAILY_DATA_STORAGE_KEY = 'fitly_daily_data';
+import { getTodayDaily, updateTodayDaily } from '../src/api/daily.api';
+import { getTodaySleep, updateTodaySleep } from '../src/api/sleep.api';
+import { getApiErrorMessage } from '../src/api/api-error';
+import {
+	createTodaySleepInterval,
+	formatTimeFromIso,
+} from '../src/utils/sleep-time';
 
 type DailyData = {
 	steps: string;
-	sleepHours: string;
-	sleepMinutes: string;
 	sleepQuality: string;
 	sleepStart: string;
 	sleepEnd: string;
@@ -28,8 +30,6 @@ type DailyData = {
 export default function AddDataScreen() {
 	const [form, setForm] = useState<DailyData>({
 		steps: '',
-		sleepHours: '',
-		sleepMinutes: '',
 		sleepQuality: '',
 		sleepStart: '',
 		sleepEnd: '',
@@ -44,22 +44,26 @@ export default function AddDataScreen() {
 
 	const loadSavedData = async () => {
 		try {
-			const raw = await AsyncStorage.getItem(DAILY_DATA_STORAGE_KEY);
-			if (!raw) return;
-
-			const parsed = JSON.parse(raw);
+			const [daily, sleep] = await Promise.all([
+				getTodayDaily(),
+				getTodaySleep(),
+			]);
 
 			setForm({
-				steps: String(parsed?.steps ?? ''),
-				sleepHours: String(parsed?.sleepHours ?? ''),
-				sleepMinutes: String(parsed?.sleepMinutes ?? ''),
-				sleepQuality: parsed?.sleepQuality ?? '',
-				sleepStart: parsed?.sleepStart ?? '',
-				sleepEnd: parsed?.sleepEnd ?? '',
-				calories: String(parsed?.calories ?? ''),
+				steps: String(daily.steps),
+				sleepQuality: sleep ? String(sleep.sleepQuality) : '',
+				sleepStart: sleep ? formatTimeFromIso(sleep.sleepStart) : '',
+				sleepEnd: sleep ? formatTimeFromIso(sleep.sleepEnd) : '',
+				calories: String(daily.calories),
 			});
-		} catch (e) {
-			console.log('Ошибка загрузки дневных данных', e);
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(
+					requestError,
+					'Не удалось загрузить дневные данные',
+				),
+			);
 		}
 	};
 
@@ -81,18 +85,30 @@ export default function AddDataScreen() {
 			return false;
 		}
 
-		if (form.sleepHours && Number(form.sleepHours) > 24) {
-			Alert.alert('Ошибка', 'Часы сна не могут быть больше 24');
-			return false;
-		}
-
-		if (form.sleepMinutes && Number(form.sleepMinutes) > 59) {
-			Alert.alert('Ошибка', 'Минуты сна должны быть от 0 до 59');
-			return false;
-		}
-
 		if (form.calories && Number(form.calories) < 0) {
 			Alert.alert('Ошибка', 'Калории не могут быть отрицательными');
+			return false;
+		}
+
+		const hasAnySleepField =
+			!!form.sleepQuality || !!form.sleepStart || !!form.sleepEnd;
+
+		if (
+			hasAnySleepField &&
+			(!form.sleepQuality || !form.sleepStart || !form.sleepEnd)
+		) {
+			Alert.alert(
+				'Ошибка',
+				'Для сна укажите начало, окончание и качество',
+			);
+			return false;
+		}
+
+		if (
+			form.sleepQuality &&
+			(Number(form.sleepQuality) < 1 || Number(form.sleepQuality) > 5)
+		) {
+			Alert.alert('Ошибка', 'Качество сна должно быть от 1 до 5');
 			return false;
 		}
 
@@ -105,21 +121,29 @@ export default function AddDataScreen() {
 		try {
 			setIsSaving(true);
 
-			const payload = {
-				steps: Number(form.steps || 0),
-				sleepHours: Number(form.sleepHours || 0),
-				sleepMinutes: Number(form.sleepMinutes || 0),
-				sleepQuality: form.sleepQuality || '',
-				sleepStart: form.sleepStart || '',
-				sleepEnd: form.sleepEnd || '',
-				calories: Number(form.calories || 0),
-				updatedAt: new Date().toISOString(),
-			};
+			const requests: Promise<unknown>[] = [
+				updateTodayDaily({
+					steps: Number(form.steps || 0),
+					calories: Number(form.calories || 0),
+				}),
+			];
 
-			await AsyncStorage.setItem(
-				DAILY_DATA_STORAGE_KEY,
-				JSON.stringify(payload),
-			);
+			if (form.sleepQuality && form.sleepStart && form.sleepEnd) {
+				const interval = createTodaySleepInterval(
+					form.sleepStart,
+					form.sleepEnd,
+				);
+
+				requests.push(
+					updateTodaySleep({
+						sleepStart: interval.sleepStart,
+						sleepEnd: interval.sleepEnd,
+						sleepQuality: Number(form.sleepQuality),
+					}),
+				);
+			}
+
+			await Promise.all(requests);
 
 			Alert.alert('Успешно', 'Данные сохранены', [
 				{
@@ -127,9 +151,11 @@ export default function AddDataScreen() {
 					onPress: () => router.back(),
 				},
 			]);
-		} catch (e) {
-			console.log('Ошибка сохранения данных', e);
-			Alert.alert('Ошибка', 'Не удалось сохранить данные');
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(requestError, 'Не удалось сохранить данные'),
+			);
 		} finally {
 			setIsSaving(false);
 		}
@@ -177,40 +203,15 @@ export default function AddDataScreen() {
 						<Text style={styles.sectionTitle}>Сон</Text>
 					</View>
 
-					<View style={styles.rowInputs}>
-						<View style={styles.halfInputWrap}>
-							<Text style={styles.label}>Часы</Text>
-							<TextInput
-								style={styles.input}
-								value={form.sleepHours}
-								onChangeText={value => updateNumericField('sleepHours', value)}
-								keyboardType='numeric'
-								placeholder='7'
-								placeholderTextColor='#A0A7B5'
-							/>
-						</View>
-
-						<View style={styles.halfInputWrap}>
-							<Text style={styles.label}>Минуты</Text>
-							<TextInput
-								style={styles.input}
-								value={form.sleepMinutes}
-								onChangeText={value =>
-									updateNumericField('sleepMinutes', value)
-								}
-								keyboardType='numeric'
-								placeholder='20'
-								placeholderTextColor='#A0A7B5'
-							/>
-						</View>
-					</View>
-
 					<Text style={styles.label}>Качество сна</Text>
 					<TextInput
 						style={styles.input}
 						value={form.sleepQuality}
-						onChangeText={value => updateField('sleepQuality', value)}
-						placeholder='Например, Хорошо'
+						onChangeText={value =>
+							updateNumericField('sleepQuality', value)
+						}
+						keyboardType='numeric'
+						placeholder='От 1 до 5'
 						placeholderTextColor='#A0A7B5'
 					/>
 

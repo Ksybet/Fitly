@@ -1,4 +1,15 @@
-const { loginUser, registerUser } = require('./auth.service');
+const {
+	loginUser,
+	registerUser,
+	refreshAuthTokens,
+	logoutSession,
+	logoutAllSessions,
+	getCurrentUser,
+} = require('./auth.service');
+const {
+	sendSuccess,
+	sendActionCompleted,
+} = require('../../utils/http-response');
 
 async function login(req, res, next) {
 	try {
@@ -12,10 +23,7 @@ async function login(req, res, next) {
 			device: req.get('user-agent'),
 		});
 
-		res.status(200).json({
-			success: true,
-			data: result,
-		});
+		return sendSuccess(res, result);
 	} catch (error) {
 		next(error);
 	}
@@ -27,10 +35,37 @@ async function register(req, res, next) {
 
 		const result = await registerUser({ email, password, appVersion });
 
-		res.status(201).json({
-			success: true,
-			data: result,
-		});
+		return sendSuccess(res, result, { status: 201 });
+	} catch (error) {
+		next(error);
+	}
+}
+
+async function refresh(req, res, next) {
+	try {
+		const result = await refreshAuthTokens(req.body.refreshToken);
+
+		return sendSuccess(res, result);
+	} catch (error) {
+		next(error);
+	}
+}
+
+async function logout(req, res, next) {
+	try {
+		await logoutSession(req.user.userId, req.body.refreshToken);
+
+		return sendActionCompleted(res);
+	} catch (error) {
+		next(error);
+	}
+}
+
+async function logoutAll(req, res, next) {
+	try {
+		await logoutAllSessions(req.user.userId);
+
+		return sendActionCompleted(res);
 	} catch (error) {
 		next(error);
 	}
@@ -38,12 +73,9 @@ async function register(req, res, next) {
 
 async function me(req, res, next) {
 	try {
-		res.status(200).json({
-			success: true,
-			data: {
-				user: req.user,
-			},
-		});
+		const user = await getCurrentUser(req.user.userId);
+
+		return sendSuccess(res, user);
 	} catch (error) {
 		next(error);
 	}
@@ -52,5 +84,8 @@ async function me(req, res, next) {
 module.exports = {
 	login,
 	register,
+	refresh,
+	logout,
+	logoutAll,
 	me,
 };

@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+} from 'react';
 import {
 	View,
 	Text,
@@ -12,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getTodayMood, updateTodayMood } from '../src/api/mood.api';
+import { getApiErrorMessage } from '../src/api/api-error';
 
 type MoodMeta = {
 	emoji: string;
@@ -19,12 +26,11 @@ type MoodMeta = {
 };
 
 function getMoodMeta(score: number): MoodMeta {
-	if (score <= 1) return { emoji: '😭', label: 'Ужасное' };
-	if (score <= 3) return { emoji: '😞', label: 'Плохое' };
-	if (score <= 5) return { emoji: '😐', label: 'Нейтральное' };
-	if (score <= 7) return { emoji: '🙂', label: 'Хорошее' };
-	if (score <= 9) return { emoji: '😄', label: 'Отличное' };
-	return { emoji: '🤩', label: 'Прекрасное' };
+	if (score === 1) return { emoji: '😭', label: 'Ужасное' };
+	if (score === 2) return { emoji: '😞', label: 'Плохое' };
+	if (score === 3) return { emoji: '😐', label: 'Нейтральное' };
+	if (score === 4) return { emoji: '🙂', label: 'Хорошее' };
+	return { emoji: '😄', label: 'Отличное' };
 }
 
 export default function MoodScreen() {
@@ -34,11 +40,7 @@ export default function MoodScreen() {
 	const [selectedScore, setSelectedScore] = useState<number | null>(null);
 	const [isSaving, setIsSaving] = useState(false);
 
-	useEffect(() => {
-		loadMood();
-	}, []);
-
-	const loadMood = async () => {
+	const loadMood = useCallback(async () => {
 		try {
 			const data = await getTodayMood();
 
@@ -47,10 +49,20 @@ export default function MoodScreen() {
 			if (data.moodScore !== undefined && data.moodScore !== null) {
 				setSelectedScore(Number(data.moodScore));
 			}
-		} catch (e) {
-			console.log('Ошибка загрузки настроения', e);
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(
+					requestError,
+					'Не удалось загрузить настроение',
+				),
+			);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		void loadMood();
+	}, [loadMood]);
 
 	const moodMeta = useMemo(() => {
 		if (selectedScore === null) {
@@ -62,7 +74,7 @@ export default function MoodScreen() {
 
 	const saveMood = async () => {
 		if (selectedScore === null) {
-			Alert.alert('Ошибка', 'Выберите настроение от 0 до 10');
+			Alert.alert('Ошибка', 'Выберите настроение от 1 до 5');
 			return;
 		}
 
@@ -77,9 +89,14 @@ export default function MoodScreen() {
 			});
 
 			router.back();
-		} catch (e) {
-			console.log('Ошибка сохранения настроения', e);
-			Alert.alert('Ошибка', 'Не удалось сохранить настроение');
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(
+					requestError,
+					'Не удалось сохранить настроение',
+				),
+			);
 		} finally {
 			setIsSaving(false);
 		}
@@ -131,7 +148,7 @@ export default function MoodScreen() {
 					</Text>
 
 					<Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
-						Выбери оценку настроения от 0 до 10
+						Выбери оценку настроения от 1 до 5
 					</Text>
 
 					<View
@@ -145,7 +162,7 @@ export default function MoodScreen() {
 					>
 						<Text style={[styles.currentMoodLabel, { color: colors.primary }]}>
 							{selectedScore !== null
-								? `${selectedScore}/10 · ${moodMeta.label}`
+								? `${selectedScore}/5 · ${moodMeta.label}`
 								: 'Настроение не выбрано'}
 						</Text>
 					</View>
@@ -165,8 +182,8 @@ export default function MoodScreen() {
 					</Text>
 
 					<View style={styles.scoreGrid}>
-						{Array.from({ length: 11 }, (_, index) => {
-							const score = index;
+						{Array.from({ length: 5 }, (_, index) => {
+							const score = index + 1;
 							const isActive = selectedScore === score;
 
 							return (
@@ -216,12 +233,11 @@ export default function MoodScreen() {
 					</Text>
 
 					<Text style={[styles.legendText, { color: colors.textSecondary }]}>
-						0–1 — ужасное{'\n'}
-						2–3 — плохое{'\n'}
-						4–5 — нейтральное{'\n'}
-						6–7 — хорошее{'\n'}
-						8–9 — отличное{'\n'}
-						10 — прекрасное
+						1 — ужасное{'\n'}
+						2 — плохое{'\n'}
+						3 — нейтральное{'\n'}
+						4 — хорошее{'\n'}
+						5 — отличное
 					</Text>
 				</View>
 

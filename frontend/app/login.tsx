@@ -88,7 +88,7 @@ export default function LoginScreen() {
 	const handleSubmit = () => {
 		setError('');
 
-		if (!email.trim() || !password.trim()) {
+		if (!email.trim() || !password) {
 			setError('Пожалуйста, заполните все поля');
 			return;
 		}
@@ -98,13 +98,25 @@ export default function LoginScreen() {
 			return;
 		}
 
-		if (password.trim().length < 8) {
-			setError('Пароль должен содержать минимум 8 символов');
+		if (password.length > 72) {
+			setError('Пароль не должен быть длиннее 72 символов');
 			return;
 		}
 
 		if (activeTab === 'register') {
-			if (!confirmPassword.trim()) {
+			if (
+				password.length < 8 ||
+				!/[A-Z]/.test(password) ||
+				!/[0-9]/.test(password) ||
+				!/[^A-Za-z0-9]/.test(password)
+			) {
+				setError(
+					'Пароль должен содержать минимум 8 символов, заглавную латинскую букву, цифру и специальный символ',
+				);
+				return;
+			}
+
+			if (!confirmPassword) {
 				setError('Пожалуйста, подтвердите пароль');
 				return;
 			}

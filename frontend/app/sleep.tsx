@@ -1,4 +1,11 @@
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 import {
 	View,
 	Text,
@@ -13,18 +20,30 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getTodaySleep, updateTodaySleep } from '../src/api/sleep.api';
+import { getApiErrorMessage } from '../src/api/api-error';
+import {
+	createTodaySleepInterval,
+	formatTimeFromIso,
+} from '../src/utils/sleep-time';
 
 type PickerField = 'start' | 'end' | null;
 const HOURS = Array.from({ length: 24 }, (_, index) => index);
 const MINUTES = Array.from({ length: 60 }, (_, index) => index);
 const TIME_OPTION_HEIGHT = 50;
 const TIME_VISIBLE_AREA_HEIGHT = 190;
+const SLEEP_QUALITY_OPTIONS = [
+	{ value: 1, label: 'Очень плохо' },
+	{ value: 2, label: 'Плохо' },
+	{ value: 3, label: 'Нормально' },
+	{ value: 4, label: 'Хорошо' },
+	{ value: 5, label: 'Отлично' },
+] as const;
 
 export default function SleepScreen() {
 	const insets = useSafeAreaInsets();
 	const { colors, isDark } = useContext(ThemeContext);
 
-	const [sleepQuality, setSleepQuality] = useState('');
+	const [sleepQuality, setSleepQuality] = useState<number | null>(null);
 	const [sleepStart, setSleepStart] = useState('');
 	const [sleepEnd, setSleepEnd] = useState('');
 	const [isSaving, setIsSaving] = useState(false);
@@ -33,23 +52,26 @@ export default function SleepScreen() {
 	const [pickerHour, setPickerHour] = useState(22);
 	const [pickerMinute, setPickerMinute] = useState(0);
 
-	useEffect(() => {
-		loadSleepData();
-	}, []);
-
-	const loadSleepData = async () => {
+	const loadSleepData = useCallback(async () => {
 		try {
 			const data = await getTodaySleep();
 
 			if (!data) return;
 
-			setSleepQuality(data?.sleepQuality ?? '');
-			setSleepStart(data?.sleepStart ?? '');
-			setSleepEnd(data?.sleepEnd ?? '');
-		} catch (e) {
-			console.log('Ошибка загрузки сна', e);
+			setSleepQuality(data.sleepQuality);
+			setSleepStart(formatTimeFromIso(data.sleepStart));
+			setSleepEnd(formatTimeFromIso(data.sleepEnd));
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(requestError, 'Не удалось загрузить данные сна'),
+			);
 		}
-	};
+	}, []);
+
+	useEffect(() => {
+		void loadSleepData();
+	}, [loadSleepData]);
 
 	const formatTime = (hours: number, minutes: number) => {
 		return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
@@ -112,7 +134,7 @@ export default function SleepScreen() {
 			return false;
 		}
 
-		if (!sleepQuality) {
+		if (sleepQuality === null) {
 			Alert.alert('Ошибка', 'Выберите качество сна');
 			return false;
 		}
@@ -160,22 +182,24 @@ export default function SleepScreen() {
 
 	const saveSleep = async () => {
 		if (!validate()) return;
+		if (sleepQuality === null) return;
 
 		try {
 			setIsSaving(true);
+			const interval = createTodaySleepInterval(sleepStart, sleepEnd);
 
 			await updateTodaySleep({
-				sleepStart,
-				sleepEnd,
-				sleepHours: duration.hours,
-				sleepMinutes: duration.minutes,
+				sleepStart: interval.sleepStart,
+				sleepEnd: interval.sleepEnd,
 				sleepQuality,
 			});
 
 			router.back();
-		} catch (e) {
-			console.log('Ошибка сохранения', e);
-			Alert.alert('Ошибка', 'Не удалось сохранить');
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(requestError, 'Не удалось сохранить данные сна'),
+			);
 		} finally {
 			setIsSaving(false);
 		}
@@ -216,12 +240,12 @@ export default function SleepScreen() {
 					</Text>
 
 					<View style={styles.optionRow}>
-						{['Плохо', 'Нормально', 'Хорошо'].map(option => {
-							const isActive = sleepQuality === option;
+						{SLEEP_QUALITY_OPTIONS.map(option => {
+							const isActive = sleepQuality === option.value;
 
 							return (
 								<TouchableOpacity
-									key={option}
+									key={option.value}
 									style={[
 										styles.optionButton,
 										{
@@ -233,7 +257,7 @@ export default function SleepScreen() {
 											borderColor: isActive ? colors.primary : colors.border,
 										},
 									]}
-									onPress={() => setSleepQuality(option)}
+									onPress={() => setSleepQuality(option.value)}
 									activeOpacity={0.85}
 								>
 									<Text
@@ -244,7 +268,7 @@ export default function SleepScreen() {
 											},
 										]}
 									>
-										{option}
+										{option.label}
 									</Text>
 								</TouchableOpacity>
 							);

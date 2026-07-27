@@ -19,11 +19,17 @@ import { AuthContext } from '../src/context/AuthContext';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getMyProfile } from '../src/api/profile.api';
 import { getGoals } from '../src/api/goals.api';
-import { getTodayWater, addWater, resetTodayWater } from '../src/api/water.api';
+import { mapGoalsToManaged } from '../src/api/goals.mapper';
+import { getTodayWater, setTodayWater } from '../src/api/water.api';
 import { getTodaySleep } from '../src/api/sleep.api';
 import { getTodayMood } from '../src/api/mood.api';
 import { getFavorites } from '../src/api/favorites.api';
 import { getTodayDaily, updateTodayDaily } from '../src/api/daily.api';
+import { getApiErrorMessage } from '../src/api/api-error';
+import {
+	getSleepQualityLabel,
+	splitDuration,
+} from '../src/utils/sleep-time';
 import BottomNav from '../src/components/BottomNav';
 
 type ActionButtonProps = {
@@ -45,7 +51,7 @@ type DailyDataState = {
 	steps: number;
 	sleepHours: number;
 	sleepMinutes: number;
-	sleepQuality: string;
+	sleepQuality: number | null;
 	sleepStart: string;
 	sleepEnd: string;
 	calories: number;
@@ -180,7 +186,7 @@ export default function HomeScreen() {
 		steps: 0,
 		sleepHours: 0,
 		sleepMinutes: 0,
-		sleepQuality: '',
+		sleepQuality: null,
 		sleepStart: '',
 		sleepEnd: '',
 		calories: 0,
@@ -196,8 +202,6 @@ export default function HomeScreen() {
 
 	const userName =
 		profileData.firstName ||
-		user?.firstName ||
-		user?.name ||
 		user?.email?.split('@')[0] ||
 		'пользователь';
 
@@ -237,36 +241,21 @@ export default function HomeScreen() {
 				heightCm: profile?.heightCm ?? null,
 			});
 
-			const nextGoals: GoalsState = {
-				stepsGoal: null,
-				calorieGoal: null,
-				weightGoal: null,
-				sleepGoalHours: null,
-				waterGoal: null,
-			};
+			const managedGoals = mapGoalsToManaged(apiGoals);
+			if (todayWater.goalMl > 0) {
+				managedGoals.waterGoal = todayWater.goalMl / 1000;
+			}
+			setGoals(managedGoals);
 
-			apiGoals.forEach((goal: any) => {
-				const value =
-					goal.targetValue !== undefined &&
-					goal.targetValue !== null &&
-					Number(goal.targetValue) > 0
-						? Number(goal.targetValue)
-						: null;
-
-				if (goal.goalType === 'steps') nextGoals.stepsGoal = value;
-				if (goal.goalType === 'calories') nextGoals.calorieGoal = value;
-				if (goal.goalType === 'weight') nextGoals.weightGoal = value;
-				if (goal.goalType === 'sleep') nextGoals.sleepGoalHours = value;
-				if (goal.goalType === 'water') nextGoals.waterGoal = value;
-			});
-
-			setGoals(nextGoals);
+			const sleepDuration = splitDuration(
+				Number(todaySleep?.durationMinutes ?? 0),
+			);
 
 			setDailyData({
 				steps: Number(todayDaily?.steps ?? 0),
-				sleepHours: Number(todaySleep?.sleepHours ?? 0),
-				sleepMinutes: Number(todaySleep?.sleepMinutes ?? 0),
-				sleepQuality: todaySleep?.sleepQuality ?? '',
+				sleepHours: sleepDuration.hours,
+				sleepMinutes: sleepDuration.minutes,
+				sleepQuality: todaySleep?.sleepQuality ?? null,
 				sleepStart: todaySleep?.sleepStart ?? '',
 				sleepEnd: todaySleep?.sleepEnd ?? '',
 				calories: Number(todayDaily?.calories ?? 0),
@@ -277,8 +266,8 @@ export default function HomeScreen() {
 				moodLabel: todayMood?.moodLabel ?? '',
 				moodEmoji: todayMood?.moodEmoji ?? '',
 				waterCurrent:
-					Number(todayWater?.totalMl ?? 0) > 0
-						? Number(todayWater.totalMl) / 1000
+					Number(todayWater.amountMl) > 0
+						? Number(todayWater.amountMl) / 1000
 						: null,
 			});
 
@@ -289,8 +278,14 @@ export default function HomeScreen() {
 				height: Boolean(apiFavorites?.height),
 				bmi: Boolean(apiFavorites?.bmi),
 			});
-		} catch (e) {
-			console.log('Ошибка загрузки данных Home', e);
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(
+					requestError,
+					'Не удалось загрузить данные за сегодня',
+				),
+			);
 		}
 	};
 
@@ -402,19 +397,15 @@ export default function HomeScreen() {
 
 			if (quickEditField === 'steps' || quickEditField === 'calories') {
 				updatedDaily = await updateTodayDaily({
-					steps: quickEditField === 'steps' ? numericValue : dailyData.steps,
-					calories:
-						quickEditField === 'calories' ? numericValue : dailyData.calories,
+					[quickEditField]: numericValue,
 				});
 			}
 
 			if (quickEditField === 'water') {
-				await resetTodayWater();
-
-				if (numericValue > 0) {
-					const updatedWater = await addWater(Math.round(numericValue * 1000));
-					updatedWaterLiters = Number(updatedWater.totalMl || 0) / 1000;
-				}
+				const updatedWater = await setTodayWater(
+					Math.round(numericValue * 1000),
+				);
+				updatedWaterLiters = Number(updatedWater.amountMl) / 1000;
 			}
 
 			setDailyData(prev => ({
@@ -432,9 +423,11 @@ export default function HomeScreen() {
 			}));
 
 			closeQuickEdit();
-		} catch (e) {
-			console.log('Ошибка быстрого сохранения', e);
-			Alert.alert('Ошибка', 'Не удалось сохранить данные');
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(requestError, 'Не удалось сохранить данные'),
+			);
 		} finally {
 			setIsSavingQuickEdit(false);
 		}
@@ -470,7 +463,7 @@ export default function HomeScreen() {
 	const currentMoodEmoji = dailyData.moodEmoji || '😐';
 	const currentMoodLabel = dailyData.moodLabel || 'Нейтральное';
 	const currentMoodScore =
-		dailyData.moodScore !== null ? `${dailyData.moodScore} / 10` : '';
+		dailyData.moodScore !== null ? `${dailyData.moodScore} / 5` : '';
 
 	return (
 		<View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -584,7 +577,8 @@ export default function HomeScreen() {
 
 							<Text style={[styles.smallAccentText, { color: colors.blue }]}>
 								{hasSleep
-									? dailyData.sleepQuality || 'Без оценки'
+									? getSleepQualityLabel(dailyData.sleepQuality) ||
+										'Без оценки'
 									: 'Нет данных'}
 							</Text>
 

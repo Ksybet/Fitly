@@ -4,8 +4,7 @@ jest.mock('../../src/modules/goals/goals.repository', () => ({
 }));
 jest.mock('../../src/modules/water/water.repository', () => ({
 	getTodayWater: jest.fn(),
-	addWater: jest.fn(),
-	resetTodayWater: jest.fn(),
+	setTodayWater: jest.fn(),
 }));
 jest.mock('../../src/modules/sleep/sleep.repository', () => ({
 	getTodaySleep: jest.fn(),
@@ -19,12 +18,18 @@ jest.mock('../../src/modules/daily/daily.repository', () => ({
 	getToday: jest.fn(),
 	upsertToday: jest.fn(),
 }));
+jest.mock('../../src/modules/settings/user-local-date.service', () => ({
+	getUserLocalDate: jest.fn().mockResolvedValue('2026-07-26'),
+}));
 
 const goalsRepository = require('../../src/modules/goals/goals.repository');
 const waterRepository = require('../../src/modules/water/water.repository');
 const sleepRepository = require('../../src/modules/sleep/sleep.repository');
 const moodRepository = require('../../src/modules/mood/mood.repository');
 const dailyRepository = require('../../src/modules/daily/daily.repository');
+const {
+	getUserLocalDate,
+} = require('../../src/modules/settings/user-local-date.service');
 const goalsService = require('../../src/modules/goals/goals.service');
 const waterService = require('../../src/modules/water/water.service');
 const sleepService = require('../../src/modules/sleep/sleep.service');
@@ -35,147 +40,231 @@ describe('goals service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
 	test('gets goals with a normalized user id', async () => {
-		const goals = [{ id: 1, title: 'Walk' }];
+		const createdAt = new Date('2026-07-26T12:00:00.000Z');
+		const goals = [{
+			id: 1,
+			goalType: 'steps',
+			title: 'Walk',
+			targetValue: 5000,
+			unit: 'steps',
+			startsOn: '2026-07-26',
+			endsOn: null,
+			status: 'created',
+			currentValue: null,
+			progressPercent: 0,
+			createdAt,
+			completedAt: null,
+		}];
 		goalsRepository.getGoalsByUserId.mockResolvedValueOnce(goals);
 
-		await expect(goalsService.getGoals('7')).resolves.toBe(goals);
+		await expect(goalsService.getGoals('7')).resolves.toEqual([{
+			...goals[0],
+			createdAt: '2026-07-26T12:00:00.000Z',
+		}]);
 		expect(goalsRepository.getGoalsByUserId).toHaveBeenCalledWith(7);
 	});
 
-	test('rejects malformed goals and trims required values', async () => {
-		await expect(goalsService.updateGoals(1, {})).rejects.toMatchObject({ status: 400 });
-		await expect(goalsService.updateGoals(1, [{ goalType: 'steps', title: ' ' }]))
-			.rejects.toMatchObject({ status: 400 });
+	test('passes replacements through without coercing contract values', async () => {
+		const input = [{
+			goalType: 'steps',
+			title: 'Walk',
+			targetValue: 5000,
+			unit: 'steps',
+		}];
 		goalsRepository.replaceGoals.mockResolvedValueOnce([]);
-		await goalsService.updateGoals(1, [{ goalType: ' steps ', title: ' Walk ', targetValue: '5000' }]);
-		expect(goalsRepository.replaceGoals).toHaveBeenCalledWith(1, [{
-			goalType: 'steps', title: 'Walk', targetValue: 5000,
-		}]);
-	});
-
-	test('passes an empty list through as a deterministic replacement', async () => {
-		goalsRepository.replaceGoals.mockResolvedValueOnce([]);
-		await expect(goalsService.updateGoals(1, [])).resolves.toEqual([]);
-		expect(goalsRepository.replaceGoals).toHaveBeenCalledWith(1, []);
+		await expect(goalsService.updateGoals(1, input)).resolves.toEqual([]);
+		expect(goalsRepository.replaceGoals).toHaveBeenCalledWith(1, input);
 	});
 });
 
 describe('water service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
-	test('gets and resets water with a normalized user id', async () => {
-		waterRepository.getTodayWater.mockResolvedValueOnce({ totalMl: 250 });
-		waterRepository.resetTodayWater.mockResolvedValueOnce({ totalMl: 0 });
+	test('gets and replaces the singleton with a contract WaterDay DTO', async () => {
+		const storedWater = {
+			date: '2026-07-26',
+			amountMl: 500,
+			goalMl: 2000,
+		};
+		waterRepository.getTodayWater.mockResolvedValueOnce(storedWater);
+		waterRepository.setTodayWater.mockResolvedValueOnce(storedWater);
 
-		await expect(waterService.getTodayWater('7')).resolves.toEqual({ totalMl: 250 });
-		await expect(waterService.resetTodayWater('7')).resolves.toEqual({ totalMl: 0 });
-		expect(waterRepository.getTodayWater).toHaveBeenCalledWith(7);
-		expect(waterRepository.resetTodayWater).toHaveBeenCalledWith(7);
-	});
-
-	test.each([-1, 0, '', 'not-a-number', Infinity])('rejects invalid water amount %p', async amount => {
-		await expect(waterService.addWater(1, amount)).rejects.toMatchObject({ status: 400 });
-	});
-
-	test('normalizes a numeric string before calling the repository', async () => {
-		waterRepository.addWater.mockResolvedValueOnce({ totalMl: 250 });
-		await waterService.addWater(1, '250');
-		expect(waterRepository.addWater).toHaveBeenCalledWith(1, 250);
+		await expect(waterService.getTodayWater('7')).resolves.toEqual({
+			...storedWater,
+			progressPercent: 25,
+		});
+		await expect(waterService.setTodayWater('7', 500)).resolves.toEqual({
+			...storedWater,
+			progressPercent: 25,
+		});
+		expect(waterRepository.getTodayWater)
+			.toHaveBeenCalledWith(7, '2026-07-26');
+		expect(waterRepository.setTodayWater)
+			.toHaveBeenCalledWith(7, '2026-07-26', 500);
 	});
 
 	test('rejects an invalid user id before accessing the repository', async () => {
-		await expect(waterService.getTodayWater(0)).rejects.toMatchObject({ status: 400 });
+		await expect(waterService.getTodayWater(0))
+			.rejects.toMatchObject({ status: 400 });
 		expect(waterRepository.getTodayWater).not.toHaveBeenCalled();
+		expect(getUserLocalDate).not.toHaveBeenCalled();
 	});
 });
 
 describe('sleep service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
-	test('gets sleep with a normalized user id', async () => {
-		const sleep = { sleepHours: 8, sleepMinutes: 15 };
+	test('maps a persisted sleep record to the documented DTO', async () => {
+		const sleep = {
+			id: 1,
+			date: '2026-07-26',
+			sleepStart: new Date('2026-07-25T22:00:00.000Z'),
+			sleepEnd: new Date('2026-07-26T06:00:00.000Z'),
+			sleepQuality: 4,
+			durationMinutes: 480,
+			createdAt: new Date('2026-07-26T06:00:00.000Z'),
+			updatedAt: new Date('2026-07-26T06:00:00.000Z'),
+		};
 		sleepRepository.getTodaySleep.mockResolvedValueOnce(sleep);
 
-		await expect(sleepService.getTodaySleep('7')).resolves.toBe(sleep);
-		expect(sleepRepository.getTodaySleep).toHaveBeenCalledWith(7);
+		await expect(sleepService.getTodaySleep('7')).resolves.toEqual({
+			id: 1,
+			date: '2026-07-26',
+			sleepStart: '2026-07-25T22:00:00.000Z',
+			sleepEnd: '2026-07-26T06:00:00.000Z',
+			sleepQuality: 4,
+			durationMinutes: 480,
+			createdAt: '2026-07-26T06:00:00.000Z',
+			updatedAt: '2026-07-26T06:00:00.000Z',
+		});
+		expect(sleepRepository.getTodaySleep)
+			.toHaveBeenCalledWith(7, '2026-07-26');
 	});
 
 	test.each([
-		[{ sleepEnd: '08:00', sleepHours: 8, sleepMinutes: 0 }],
-		[{ sleepStart: '23:00', sleepHours: 8, sleepMinutes: 0 }],
-		[{ sleepStart: '23:00', sleepEnd: '08:00', sleepHours: -1, sleepMinutes: 0 }],
-		[{ sleepStart: '23:00', sleepEnd: '08:00', sleepHours: 8, sleepMinutes: 60 }],
-		[{ sleepStart: '23:00', sleepEnd: '08:00', sleepHours: 'bad', sleepMinutes: 0 }],
-	])('rejects invalid sleep data', async sleepData => {
-		await expect(sleepService.updateTodaySleep(1, sleepData)).rejects.toMatchObject({ status: 400 });
+		['2026-07-26T08:00:00Z', '2026-07-26T08:00:00Z'],
+		['2026-07-26T08:00:00Z', '2026-07-27T08:01:00Z'],
+	])('rejects an invalid interval from %s to %s', async (sleepStart, sleepEnd) => {
+		await expect(sleepService.updateTodaySleep(1, {
+			sleepStart,
+			sleepEnd,
+			sleepQuality: 3,
+		})).rejects.toMatchObject({ status: 400 });
 	});
 
-	test('stores valid duration and defaults missing quality', async () => {
-		sleepRepository.upsertTodaySleep.mockResolvedValueOnce({ id: 1 });
+	test('persists timestamps and ignores deprecated duration hints', async () => {
+		const storedSleep = {
+			id: 1,
+			date: '2026-07-26',
+			sleepStart: '2026-07-25T22:00:00.000Z',
+			sleepEnd: '2026-07-26T06:00:00.000Z',
+			sleepQuality: 4,
+			durationMinutes: 480,
+			createdAt: '2026-07-26T06:00:00.000Z',
+			updatedAt: '2026-07-26T06:00:00.000Z',
+		};
+		sleepRepository.upsertTodaySleep.mockResolvedValueOnce(storedSleep);
+
 		await sleepService.updateTodaySleep(1, {
-			sleepStart: ' 23:00 ', sleepEnd: '08:00', sleepHours: '8', sleepMinutes: '15',
+			sleepStart: storedSleep.sleepStart,
+			sleepEnd: storedSleep.sleepEnd,
+			sleepHours: 1,
+			sleepMinutes: 2,
+			sleepQuality: 4,
 		});
-		expect(sleepRepository.upsertTodaySleep).toHaveBeenCalledWith(1, {
-			sleepStart: '23:00', sleepEnd: '08:00', sleepHours: 8, sleepMinutes: 15, sleepQuality: '',
-		});
+		expect(sleepRepository.upsertTodaySleep).toHaveBeenCalledWith(
+			1,
+			'2026-07-26',
+			{
+				sleepStart: storedSleep.sleepStart,
+				sleepEnd: storedSleep.sleepEnd,
+				sleepQuality: 4,
+			},
+		);
 	});
 });
 
 describe('mood service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
-	test('gets mood with a normalized user id', async () => {
-		const mood = { moodScore: 8, moodLabel: 'Calm' };
+	test('omits absent optional strings from the MoodEntry DTO', async () => {
+		const mood = {
+			id: 1,
+			date: '2026-07-26',
+			moodScore: 4,
+			moodLabel: 'Calm',
+			moodEmoji: null,
+			note: null,
+			createdAt: '2026-07-26T08:00:00.000Z',
+			updatedAt: '2026-07-26T08:00:00.000Z',
+		};
 		moodRepository.getTodayMood.mockResolvedValueOnce(mood);
 
-		await expect(moodService.getTodayMood('7')).resolves.toBe(mood);
-		expect(moodRepository.getTodayMood).toHaveBeenCalledWith(7);
+		await expect(moodService.getTodayMood('7')).resolves.toEqual({
+			id: 1,
+			date: '2026-07-26',
+			moodScore: 4,
+			moodLabel: 'Calm',
+			createdAt: '2026-07-26T08:00:00.000Z',
+			updatedAt: '2026-07-26T08:00:00.000Z',
+		});
+		expect(moodRepository.getTodayMood)
+			.toHaveBeenCalledWith(7, '2026-07-26');
 	});
 
-	test.each([0, 11, 'bad'])('rejects an out-of-range mood score %p', async moodScore => {
-		await expect(moodService.updateTodayMood(1, {
-			moodScore, moodLabel: 'Happy', moodEmoji: '🙂',
-		})).rejects.toMatchObject({ status: 400 });
-	});
+	test('allows all optional mood fields to be omitted', async () => {
+		moodRepository.upsertTodayMood.mockResolvedValueOnce({
+			id: 1,
+			date: '2026-07-26',
+			moodScore: 5,
+			moodLabel: null,
+			moodEmoji: null,
+			note: null,
+			createdAt: '2026-07-26T08:00:00.000Z',
+			updatedAt: '2026-07-26T08:00:00.000Z',
+		});
 
-	test('requires label and emoji but accepts a null score', async () => {
-		await expect(moodService.updateTodayMood(1, { moodScore: null, moodEmoji: '🙂' }))
-			.rejects.toMatchObject({ status: 400 });
-		await expect(moodService.updateTodayMood(1, { moodScore: null, moodLabel: 'Calm' }))
-			.rejects.toMatchObject({ status: 400 });
-		moodRepository.upsertTodayMood.mockResolvedValueOnce({ id: 1 });
-		await moodService.updateTodayMood(1, {
-			moodScore: null, moodLabel: ' Calm ', moodEmoji: ' 🙂 ', note: '',
-		});
-		expect(moodRepository.upsertTodayMood).toHaveBeenCalledWith(1, {
-			moodScore: null, moodLabel: 'Calm', moodEmoji: '🙂', note: '',
-		});
+		await expect(moodService.updateTodayMood(1, { moodScore: 5 }))
+			.resolves.not.toHaveProperty('moodLabel');
+		expect(moodRepository.upsertTodayMood)
+			.toHaveBeenCalledWith(1, '2026-07-26', { moodScore: 5 });
 	});
 });
 
 describe('daily service', () => {
 	beforeEach(() => jest.clearAllMocks());
 
-	test('gets daily tracking with a normalized user id', async () => {
-		const daily = { steps: 4321, calories: 650 };
-		dailyRepository.getToday.mockResolvedValueOnce(daily);
+	test('maps numeric database values to the documented daily DTO', async () => {
+		dailyRepository.getToday.mockResolvedValueOnce({
+			date: '2026-07-26',
+			steps: '4321',
+			calories: '650.5',
+		});
 
-		await expect(dailyService.getToday('7')).resolves.toBe(daily);
-		expect(dailyRepository.getToday).toHaveBeenCalledWith(7);
+		await expect(dailyService.getToday('7')).resolves.toEqual({
+			date: '2026-07-26',
+			steps: 4321,
+			calories: 650.5,
+		});
+		expect(dailyRepository.getToday)
+			.toHaveBeenCalledWith(7, '2026-07-26');
 	});
 
-	test.each([
-		[{ steps: -1, calories: 0 }],
-		[{ steps: 0, calories: -1 }],
-		[{ steps: 'bad', calories: 0 }],
-		[{ steps: 0, calories: Infinity }],
-	])('rejects invalid daily values', async data => {
-		await expect(dailyService.updateToday(1, data)).rejects.toMatchObject({ status: 400 });
-	});
+	test('passes a partial update without coercing contract values', async () => {
+		dailyRepository.upsertToday.mockResolvedValueOnce({
+			date: '2026-07-26',
+			steps: 0,
+			calories: 42.5,
+		});
 
-	test('preserves zero values and sends normalized integers to the repository', async () => {
-		dailyRepository.upsertToday.mockResolvedValueOnce({ steps: 0, calories: 42 });
-		await dailyService.updateToday(1, { steps: 0, calories: '42' });
-		expect(dailyRepository.upsertToday).toHaveBeenCalledWith(1, { steps: 0, calories: 42 });
+		await dailyService.updateToday(1, { calories: 42.5 });
+		expect(dailyRepository.upsertToday).toHaveBeenCalledWith(
+			1,
+			'2026-07-26',
+			{
+				steps: undefined,
+				calories: 42.5,
+			},
+		);
 	});
 });

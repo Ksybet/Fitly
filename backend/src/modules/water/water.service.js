@@ -1,26 +1,31 @@
 const waterRepository = require('./water.repository');
+const { ensureValidUserId } = require('../../utils/validation');
+const { toWaterDayDto } = require('./water.mapper');
 const {
-	ensureValidUserId,
-	normalizeRequiredPositiveInt,
-} = require('../../utils/validation');
+	getUserLocalDate,
+} = require('../settings/user-local-date.service');
 
 async function getTodayWater(userId) {
-	return waterRepository.getTodayWater(ensureValidUserId(userId));
+	const normalizedUserId = ensureValidUserId(userId);
+	const date = await getUserLocalDate(normalizedUserId);
+	const water = await waterRepository.getTodayWater(normalizedUserId, date);
+
+	return toWaterDayDto(water);
 }
 
-async function addWater(userId, amountMl) {
-	return waterRepository.addWater(
-		ensureValidUserId(userId),
-		normalizeRequiredPositiveInt(amountMl, 'Amount'),
+async function setTodayWater(userId, amountMl) {
+	const normalizedUserId = ensureValidUserId(userId);
+	const date = await getUserLocalDate(normalizedUserId);
+	const water = await waterRepository.setTodayWater(
+		normalizedUserId,
+		date,
+		amountMl,
 	);
-}
 
-async function resetTodayWater(userId) {
-	return waterRepository.resetTodayWater(ensureValidUserId(userId));
+	return toWaterDayDto(water);
 }
 
 module.exports = {
 	getTodayWater,
-	addWater,
-	resetTodayWater,
+	setTodayWater,
 };

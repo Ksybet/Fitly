@@ -3,17 +3,14 @@ const { authMiddleware } = require('../auth/auth.middleware');
 const {
 	getMyProfile,
 	updateMyProfile,
-	deleteMyAccount,
 } = require('./profile.controller');
 const {
-	validateGetProfileRequest,
 	validateUpdateProfileRequest,
 } = require('./profile.validators');
 
 const router = express.Router();
 
-router.get('/', authMiddleware, validateGetProfileRequest, getMyProfile);
+router.get('/', authMiddleware, getMyProfile);
 router.put('/', authMiddleware, validateUpdateProfileRequest, updateMyProfile);
-router.delete('/', authMiddleware, deleteMyAccount);
 
 module.exports = router;

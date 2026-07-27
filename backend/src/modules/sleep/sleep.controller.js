@@ -1,4 +1,5 @@
 const sleepService = require('./sleep.service');
+const { sendSuccess } = require('../../utils/http-response');
 
 async function getTodaySleep(req, res, next) {
 	try {
@@ -6,10 +7,7 @@ async function getTodaySleep(req, res, next) {
 
 		const sleep = await sleepService.getTodaySleep(userId);
 
-		return res.json({
-			success: true,
-			data: sleep,
-		});
+		return sendSuccess(res, sleep);
 	} catch (error) {
 		next(error);
 	}
@@ -21,10 +19,7 @@ async function updateTodaySleep(req, res, next) {
 
 		const sleep = await sleepService.updateTodaySleep(userId, req.body);
 
-		return res.json({
-			success: true,
-			data: sleep,
-		});
+		return sendSuccess(res, sleep);
 	} catch (error) {
 		next(error);
 	}

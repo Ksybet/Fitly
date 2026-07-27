@@ -7,11 +7,13 @@ const goalColumns = `
 	title,
 	target_value::double precision AS "targetValue",
 	unit,
-	start_date AS "startDate",
-	end_date AS "endDate",
+	start_date AS "startsOn",
+	end_date AS "endsOn",
 	status,
+	current_value::double precision AS "currentValue",
+	progress_percent::double precision AS "progressPercent",
 	created_at AS "createdAt",
-	updated_at AS "updatedAt"
+	completed_at AS "completedAt"
 `;
 
 async function getGoalsByUserId(userId) {
@@ -31,23 +33,29 @@ async function replaceGoals(userId, goals) {
 
 	try {
 		await client.query('BEGIN');
-		await client.query('DELETE FROM goals WHERE user_id = $1', [userId]);
+		await client.query(
+			`UPDATE goals
+			 SET status = 'cancelled',
+			     updated_at = CURRENT_TIMESTAMP
+			 WHERE user_id = $1
+			   AND status IN ('created', 'in_progress')`,
+			[userId],
+		);
 
 		for (const goal of goals) {
 			await client.query(
 				`INSERT INTO goals (
-					user_id, goal_type, title, target_value, unit, start_date, end_date, status
+					user_id, goal_type, title, target_value, unit, start_date, end_date
 				 )
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+				 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 				[
 					userId,
 					goal.goalType,
 					goal.title,
-					goal.targetValue ?? null,
-					goal.unit ?? null,
-					goal.startDate ?? null,
-					goal.endDate ?? null,
-					goal.status ?? 'active',
+					goal.targetValue,
+					goal.unit,
+					goal.startsOn ?? null,
+					goal.endsOn ?? null,
 				],
 			);
 		}

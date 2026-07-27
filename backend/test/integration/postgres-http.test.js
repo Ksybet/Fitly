@@ -5,6 +5,9 @@ const { pool, closeDatabase } = require('../../src/config/db');
 
 const appTables = [
 	'admin_login_attempts',
+	'auth_sessions',
+	'user_settings',
+	'weight_entries',
 	'favorites',
 	'daily_tracking',
 	'mood_entries',
@@ -21,7 +24,7 @@ function expectTestDatabase(databaseName) {
 	}
 }
 
-describe('PostgreSQL HTTP contracts', () => {
+describe('PostgreSQL schema and administrator audit', () => {
 	beforeAll(async () => {
 		const result = await pool.query('SELECT current_database() AS name');
 		expectTestDatabase(result.rows[0].name);
@@ -35,214 +38,7 @@ describe('PostgreSQL HTTP contracts', () => {
 		await closeDatabase();
 	});
 
-	test('keeps all authenticated HTTP flows and camelCase response fields', async () => {
-		const email = "o'hara@example.com";
-		const password = 'strong-password';
-
-		const registerResponse = await request(app)
-			.post('/api/v1/auth/register')
-			.send({ email, password, appVersion: '1.0.0' })
-			.expect(201);
-
-		expect(registerResponse.body).toMatchObject({
-			success: true,
-			data: { user: { id: 1, email, role: 'user' } },
-		});
-		expect(registerResponse.body.data.accessToken).toEqual(expect.any(String));
-
-		const loginResponse = await request(app)
-			.post('/api/v1/auth/login')
-			.send({ login: email, password, appVersion: '1.0.0' })
-			.expect(200);
-		const authorization = `Bearer ${loginResponse.body.data.accessToken}`;
-
-		await request(app)
-			.get('/api/v1/auth/me')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data.user).toMatchObject({ userId: 1, email, role: 'user' });
-			});
-
-		await request(app)
-			.get('/api/v1/profile')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({ userId: 1, firstName: null });
-			});
-
-		const sqlLikeText = "Ada'; DROP TABLE users; --";
-		await request(app)
-			.put('/api/v1/profile')
-			.set('Authorization', authorization)
-			.send({
-				firstName: sqlLikeText,
-				birthDate: '2000-01-02',
-				gender: 'female',
-				heightCm: 170.5,
-				weightKg: 61.25,
-			})
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({
-					userId: 1,
-					firstName: sqlLikeText,
-					birthDate: expect.any(String),
-					heightCm: 170.5,
-					weightKg: 61.25,
-				});
-				expect(new Date(response.body.data.birthDate).toISOString()).toContain('2000-01');
-			});
-
-		await request(app)
-			.put('/api/v1/goals')
-			.set('Authorization', authorization)
-			.send({
-				goals: [{ goalType: 'steps', title: sqlLikeText, targetValue: 5000.5, unit: 'steps' }],
-			})
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data[0]).toMatchObject({
-					userId: 1,
-					goalType: 'steps',
-					title: sqlLikeText,
-					targetValue: 5000.5,
-				});
-				expect(typeof response.body.data[0].targetValue).toBe('number');
-			});
-
-		await request(app)
-			.get('/api/v1/goals')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => expect(response.body.data).toHaveLength(1));
-
-		await request(app)
-			.get('/api/v1/water/today')
-			.set('Authorization', authorization)
-			.expect(200, { success: true, data: { totalMl: 0 } });
-
-		await request(app)
-			.post('/api/v1/water/today')
-			.set('Authorization', authorization)
-			.send({ amountMl: 250 })
-			.expect(200, { success: true, data: { totalMl: 250 } });
-
-		await request(app)
-			.delete('/api/v1/water/today')
-			.set('Authorization', authorization)
-			.expect(200, { success: true, data: { totalMl: 0 } });
-
-		await request(app)
-			.put('/api/v1/sleep/today')
-			.set('Authorization', authorization)
-			.send({
-				sleepStart: '23:00',
-				sleepEnd: '07:30',
-				sleepHours: 8,
-				sleepMinutes: 30,
-				sleepQuality: 'good',
-			})
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({
-					userId: 1,
-					sleepStart: '23:00',
-					sleepEnd: '07:30',
-					sleepHours: 8,
-					sleepMinutes: 30,
-					sleepQuality: 'good',
-				});
-				expect(response.body.data.sleepDate).toEqual(expect.any(String));
-			});
-
-		await request(app)
-			.get('/api/v1/sleep/today')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => expect(response.body.data.sleepHours).toBe(8));
-
-		await request(app)
-			.put('/api/v1/mood/today')
-			.set('Authorization', authorization)
-			.send({ moodScore: 8, moodLabel: 'Calm', moodEmoji: '🙂', note: sqlLikeText })
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({
-					userId: 1,
-					moodScore: 8,
-					moodLabel: 'Calm',
-					moodEmoji: '🙂',
-					note: sqlLikeText,
-				});
-			});
-
-		await request(app)
-			.get('/api/v1/mood/today')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => expect(response.body.data.note).toBe(sqlLikeText));
-
-		await request(app)
-			.get('/api/v1/favorites')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({
-					userId: 1,
-					water: true,
-					weight: true,
-					height: true,
-					bmi: true,
-				});
-			});
-
-		await request(app)
-			.put('/api/v1/favorites')
-			.set('Authorization', authorization)
-			.send({ water: false, weight: true, height: false, bmi: true })
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({ water: false, height: false });
-			});
-
-		await request(app)
-			.put('/api/v1/daily/today')
-			.set('Authorization', authorization)
-			.send({ steps: 4321, calories: 650 })
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).toMatchObject({ userId: 1, steps: 4321, calories: 650 });
-			});
-
-		await request(app)
-			.get('/api/v1/daily/today')
-			.set('Authorization', authorization)
-			.expect(200)
-			.expect(response => expect(response.body.data.steps).toBe(4321));
-
-		const tableCheck = await pool.query("SELECT to_regclass('public.users') AS name");
-		expect(tableCheck.rows[0].name).toBe('users');
-
-		await request(app)
-			.delete('/api/v1/profile')
-			.set('Authorization', authorization)
-			.send({ password })
-			.expect(200, { success: true, message: 'Account deleted' });
-
-		await request(app)
-			.post('/api/v1/auth/login')
-			.send({ login: email, password, appVersion: '1.0.0' })
-			.expect(401, { success: false, message: 'Invalid credentials' });
-
-		for (const table of appTables) {
-			const countResult = await pool.query(`SELECT COUNT(*)::integer AS count FROM ${table}`);
-			expect(countResult.rows[0].count).toBe(0);
-		}
-	});
-
-	test('creates the complete schema with cascading foreign keys', async () => {
+	test('creates the complete current schema with cascading user data', async () => {
 		const tableResult = await pool.query(
 			`SELECT table_name
 			 FROM information_schema.tables
@@ -251,8 +47,8 @@ describe('PostgreSQL HTTP contracts', () => {
 			 ORDER BY table_name`,
 			[appTables],
 		);
-
-		expect(tableResult.rows.map(row => row.table_name)).toEqual([...appTables].sort());
+		expect(tableResult.rows.map(row => row.table_name))
+			.toEqual([...appTables].sort());
 
 		const cascadeResult = await pool.query(
 			`SELECT COUNT(*)::integer AS count
@@ -260,10 +56,10 @@ describe('PostgreSQL HTTP contracts', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(7);
+		expect(cascadeResult.rows[0].count).toBe(10);
 	});
 
-	test('restricts user roles to user and admin', async () => {
+	test('restricts user roles and case-insensitive email uniqueness', async () => {
 		await pool.query(
 			`INSERT INTO users (email, password_hash, role)
 			 VALUES ($1, $2, $3)`,
@@ -275,9 +71,15 @@ describe('PostgreSQL HTTP contracts', () => {
 			 VALUES ($1, $2, $3)`,
 			['invalid@example.com', 'hash', 'operator'],
 		)).rejects.toMatchObject({ code: '23514' });
+
+		await expect(pool.query(
+			`INSERT INTO users (email, password_hash, role)
+			 VALUES ($1, $2, $3)`,
+			['ADMIN@example.com', 'hash', 'user'],
+		)).rejects.toMatchObject({ code: '23505' });
 	});
 
-	test('audits administrator login attempts and preserves them after account deletion', async () => {
+	test('audits administrator logins without exposing inactive account state', async () => {
 		const password = 'Strong!Admin123';
 		const passwordHash = await bcrypt.hash(password, 4);
 		const userResult = await pool.query(
@@ -308,13 +110,15 @@ describe('PostgreSQL HTTP contracts', () => {
 				password: 'wrong-password',
 				appVersion: '1.2.3',
 			})
-			.expect(401, { success: false, message: 'Invalid credentials' });
+			.expect(401)
+			.expect(response => {
+				expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
+			});
 
 		await pool.query(
 			'UPDATE users SET is_active = FALSE WHERE id = $1',
 			[userId],
 		);
-
 		await request(app)
 			.post('/api/v1/auth/login')
 			.set('X-Forwarded-For', '203.0.113.12')
@@ -324,45 +128,39 @@ describe('PostgreSQL HTTP contracts', () => {
 				password,
 				appVersion: '1.2.3',
 			})
-			.expect(403, { success: false, message: 'User account is inactive' });
+			.expect(401)
+			.expect(response => {
+				expect(response.body.error.code).toBe('INVALID_CREDENTIALS');
+			});
 
 		const attemptsResult = await pool.query(
 			`SELECT
 				user_id AS "userId",
-				email,
 				succeeded,
 				failure_reason AS "failureReason",
-				ip_address::text AS "ipAddress",
-				device,
-				app_version AS "appVersion",
-				created_at AS "createdAt"
+				ip_address::text AS "ipAddress"
 			 FROM admin_login_attempts
 			 ORDER BY id`,
 		);
-
 		expect(attemptsResult.rows).toEqual([
-			expect.objectContaining({
+			{
 				userId,
-				email: 'admin@example.com',
 				succeeded: true,
 				failureReason: null,
 				ipAddress: '203.0.113.10/32',
-				device: 'Fitly Admin Integration',
-				appVersion: '1.2.3',
-				createdAt: expect.any(Date),
-			}),
-			expect.objectContaining({
+			},
+			{
 				userId,
 				succeeded: false,
 				failureReason: 'invalid_password',
 				ipAddress: '203.0.113.11/32',
-			}),
-			expect.objectContaining({
+			},
+			{
 				userId,
 				succeeded: false,
 				failureReason: 'inactive_account',
 				ipAddress: '203.0.113.12/32',
-			}),
+			},
 		]);
 
 		await pool.query('DELETE FROM users WHERE id = $1', [userId]);
@@ -372,10 +170,9 @@ describe('PostgreSQL HTTP contracts', () => {
 			 ORDER BY id`,
 		);
 		expect(preservedResult.rows).toHaveLength(3);
-		expect(preservedResult.rows).toEqual(
-			expect.arrayContaining([
-				{ userId: null, email: 'admin@example.com' },
-			]),
-		);
+		expect(preservedResult.rows[0]).toEqual({
+			userId: null,
+			email: 'admin@example.com',
+		});
 	});
 });

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
 	View,
 	Text,
@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { ThemeContext } from '../src/context/ThemeContext';
 import { getFavorites, updateFavorites } from '../src/api/favorites.api';
+import { getApiErrorMessage } from '../src/api/api-error';
 
 type FavoriteKey = 'water' | 'weight' | 'height' | 'bmi';
 
@@ -65,38 +66,31 @@ export default function FavoritesScreen() {
 	const [favorites, setFavorites] = useState<FavoritesState>(DEFAULT_FAVORITES);
 	const [isSaving, setIsSaving] = useState(false);
 
-	useEffect(() => {
-		loadFavorites();
-	}, []);
-
-	const loadFavorites = async () => {
+	const loadFavorites = useCallback(async () => {
 		try {
 			const data = await getFavorites();
 
-			setFavorites({
-				water: Boolean(data?.water),
-				weight: Boolean(data?.weight),
-				height: Boolean(data?.height),
-				bmi: Boolean(data?.bmi),
-			});
-		} catch (e) {
-			console.log('Ошибка загрузки избранного', e);
+			setFavorites(data);
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(
+					requestError,
+					'Не удалось загрузить избранное',
+				),
+			);
 		}
-	};
+	}, []);
 
-	const toggleFavorite = async (key: FavoriteKey) => {
-		try {
-			const updated = {
-				...favorites,
-				[key]: !favorites[key],
-			};
+	useEffect(() => {
+		void loadFavorites();
+	}, [loadFavorites]);
 
-			setFavorites(updated);
-			await updateFavorites(updated);
-		} catch (e) {
-			console.log('Ошибка сохранения избранного', e);
-			Alert.alert('Ошибка', 'Не удалось сохранить избранное');
-		}
+	const toggleFavorite = (key: FavoriteKey) => {
+		setFavorites(current => ({
+			...current,
+			[key]: !current[key],
+		}));
 	};
 
 	const saveFavorites = async () => {
@@ -107,7 +101,21 @@ export default function FavoritesScreen() {
 			return;
 		}
 
-		router.back();
+		try {
+			setIsSaving(true);
+			await updateFavorites(favorites);
+			router.back();
+		} catch (requestError) {
+			Alert.alert(
+				'Ошибка',
+				getApiErrorMessage(
+					requestError,
+					'Не удалось сохранить избранное',
+				),
+			);
+		} finally {
+			setIsSaving(false);
+		}
 	};
 
 	return (

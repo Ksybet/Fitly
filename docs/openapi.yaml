@@ -332,6 +332,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -350,6 +352,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -529,7 +533,26 @@ paths:
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Access-токен недействителен либо указан неверный текущий пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  value:
+                    success: false
+                    message: Требуется авторизация
+                    error:
+                      code: UNAUTHORIZED
+                      requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+                invalidCredentials:
+                  value:
+                    success: false
+                    message: Неверный пароль
+                    error:
+                      code: INVALID_CREDENTIALS
+                      requestId: req_01J0Y7Y0QZ5M4X2D7F8A
 
   /api/v1/profile:
     get:
@@ -2156,6 +2179,9 @@ paths:
       tags: [Settings]
       operationId: updateSettings
       summary: Частично обновить настройки
+      description: |
+        Обновляются только переданные поля. Поля объекта `notifications`
+        объединяются с сохранёнными настройками уведомлений.
       x-requirements: [FR-1201, FR-1202, FR-1408, FITLY-015, FITLY-059, FITLY-062]
       requestBody:
         required: true
@@ -4020,7 +4046,7 @@ components:
                   code: PASSWORD_TOO_WEAK
                   message: Пароль не соответствует требованиям
     Unauthorized:
-      description: Access-токен отсутствует, истёк или недействителен
+      description: Access- или refresh-токен отсутствует, истёк, отозван или недействителен
       content:
         application/json:
           schema:
@@ -4383,9 +4409,9 @@ components:
     RefreshTokenRequest:
       type: object
       description: |
-        Тело обновления сессии. Здесь передаётся refresh-токен, а не access JWT.
-        Успешная операция инвалидирует использованное значение и возвращает новую
-        пару токенов.
+        Тело операции с серверной сессией. Здесь передаётся refresh-токен, а не
+        access JWT. Конкретное действие — ротация или завершение сессии — задаётся
+        выбранной операцией.
       additionalProperties: false
       required: [refreshToken]
       properties:
@@ -5476,6 +5502,7 @@ components:
       enum: [water, nutrition, workout, mood, weight]
     NotificationPreferences:
       type: object
+      additionalProperties: false
       properties:
         enabled:
           type: boolean
@@ -5512,21 +5539,31 @@ components:
       required: [theme, language, timezone, quickAction, aiEnabled, notifications, updatedAt]
       properties:
         theme:
-          $ref: '#/components/schemas/Theme'
+          allOf:
+            - $ref: '#/components/schemas/Theme'
+          default: system
         language:
           type: string
           example: ru
           maxLength: 10
+          default: ru
         timezone:
           type: string
           description: IANA timezone, например `Europe/Tallinn`.
           example: Europe/Tallinn
+          maxLength: 100
+          default: UTC
         quickAction:
-          $ref: '#/components/schemas/QuickAction'
+          allOf:
+            - $ref: '#/components/schemas/QuickAction'
+          default: water
         aiEnabled:
           type: boolean
+          default: false
         notifications:
-          $ref: '#/components/schemas/NotificationPreferences'
+          allOf:
+            - $ref: '#/components/schemas/NotificationPreferences'
+          default: {}
         updatedAt:
           type: string
           format: date-time
