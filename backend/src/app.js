@@ -12,6 +12,7 @@ const moodRoutes = require('./modules/mood/mood.routes');
 const favoritesRoutes = require('./modules/favorites/favorites.routes');
 const dailyRoutes = require('./modules/daily/daily.routes');
 const systemRoutes = require('./modules/system/system.routes');
+const settingsRoutes = require('./modules/settings/settings.routes');
 
 const {
 	authMiddleware,
@@ -48,6 +49,7 @@ app.use('/api/v1/sleep', sleepRoutes);
 app.use('/api/v1/mood', moodRoutes);
 app.use('/api/v1/favorites', favoritesRoutes);
 app.use('/api/v1/daily', dailyRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/admin', authMiddleware, requireRole('admin'));
 
 app.use((req, res, next) => {

@@ -26,15 +26,23 @@ async function findUserByEmail(email) {
 
 async function createUser(userData) {
 	const result = await pool.query(
-		`INSERT INTO users (
-			email,
-			password_hash,
-			role,
-			is_active,
-			app_version
+		`WITH created_user AS (
+			INSERT INTO users (
+				email,
+				password_hash,
+				role,
+				is_active,
+				app_version
+			 )
+			 VALUES ($1, $2, $3, $4, $5)
+			 RETURNING *
+		 ), created_settings AS (
+			INSERT INTO user_settings (user_id)
+			SELECT id
+			FROM created_user
 		 )
-		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING ${userColumns}`,
+		 SELECT ${userColumns}
+		 FROM created_user`,
 		[
 			userData.email,
 			userData.passwordHash,

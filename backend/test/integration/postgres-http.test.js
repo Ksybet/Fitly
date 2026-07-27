@@ -6,6 +6,7 @@ const { pool, closeDatabase } = require('../../src/config/db');
 const appTables = [
 	'admin_login_attempts',
 	'auth_sessions',
+	'user_settings',
 	'weight_entries',
 	'favorites',
 	'daily_tracking',
@@ -55,7 +56,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(9);
+		expect(cascadeResult.rows[0].count).toBe(10);
 	});
 
 	test('restricts user roles and case-insensitive email uniqueness', async () => {

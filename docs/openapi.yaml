@@ -2179,6 +2179,9 @@ paths:
       tags: [Settings]
       operationId: updateSettings
       summary: Частично обновить настройки
+      description: |
+        Обновляются только переданные поля. Поля объекта `notifications`
+        объединяются с сохранёнными настройками уведомлений.
       x-requirements: [FR-1201, FR-1202, FR-1408, FITLY-015, FITLY-059, FITLY-062]
       requestBody:
         required: true
@@ -5499,6 +5502,7 @@ components:
       enum: [water, nutrition, workout, mood, weight]
     NotificationPreferences:
       type: object
+      additionalProperties: false
       properties:
         enabled:
           type: boolean
@@ -5535,21 +5539,31 @@ components:
       required: [theme, language, timezone, quickAction, aiEnabled, notifications, updatedAt]
       properties:
         theme:
-          $ref: '#/components/schemas/Theme'
+          allOf:
+            - $ref: '#/components/schemas/Theme'
+          default: system
         language:
           type: string
           example: ru
           maxLength: 10
+          default: ru
         timezone:
           type: string
           description: IANA timezone, например `Europe/Tallinn`.
           example: Europe/Tallinn
+          maxLength: 100
+          default: UTC
         quickAction:
-          $ref: '#/components/schemas/QuickAction'
+          allOf:
+            - $ref: '#/components/schemas/QuickAction'
+          default: water
         aiEnabled:
           type: boolean
+          default: false
         notifications:
-          $ref: '#/components/schemas/NotificationPreferences'
+          allOf:
+            - $ref: '#/components/schemas/NotificationPreferences'
+          default: {}
         updatedAt:
           type: string
           format: date-time
