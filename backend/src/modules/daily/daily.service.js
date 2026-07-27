@@ -1,15 +1,23 @@
 const dailyRepository = require('./daily.repository');
 const { ensureValidUserId } = require('../../utils/validation');
 const { toDailyTrackingDto } = require('./daily.mapper');
+const {
+	getUserLocalDate,
+} = require('../settings/user-local-date.service');
 
 async function getToday(userId) {
-	const daily = await dailyRepository.getToday(ensureValidUserId(userId));
+	const normalizedUserId = ensureValidUserId(userId);
+	const date = await getUserLocalDate(normalizedUserId);
+	const daily = await dailyRepository.getToday(normalizedUserId, date);
 	return toDailyTrackingDto(daily);
 }
 
 async function updateToday(userId, data) {
+	const normalizedUserId = ensureValidUserId(userId);
+	const date = await getUserLocalDate(normalizedUserId);
 	const daily = await dailyRepository.upsertToday(
-		ensureValidUserId(userId),
+		normalizedUserId,
+		date,
 		{
 			steps: data.steps,
 			calories: data.calories,

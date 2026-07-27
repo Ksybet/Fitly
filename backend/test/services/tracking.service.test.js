@@ -18,12 +18,18 @@ jest.mock('../../src/modules/daily/daily.repository', () => ({
 	getToday: jest.fn(),
 	upsertToday: jest.fn(),
 }));
+jest.mock('../../src/modules/settings/user-local-date.service', () => ({
+	getUserLocalDate: jest.fn().mockResolvedValue('2026-07-26'),
+}));
 
 const goalsRepository = require('../../src/modules/goals/goals.repository');
 const waterRepository = require('../../src/modules/water/water.repository');
 const sleepRepository = require('../../src/modules/sleep/sleep.repository');
 const moodRepository = require('../../src/modules/mood/mood.repository');
 const dailyRepository = require('../../src/modules/daily/daily.repository');
+const {
+	getUserLocalDate,
+} = require('../../src/modules/settings/user-local-date.service');
 const goalsService = require('../../src/modules/goals/goals.service');
 const waterService = require('../../src/modules/water/water.service');
 const sleepService = require('../../src/modules/sleep/sleep.service');
@@ -91,14 +97,17 @@ describe('water service', () => {
 			...storedWater,
 			progressPercent: 25,
 		});
-		expect(waterRepository.getTodayWater).toHaveBeenCalledWith(7);
-		expect(waterRepository.setTodayWater).toHaveBeenCalledWith(7, 500);
+		expect(waterRepository.getTodayWater)
+			.toHaveBeenCalledWith(7, '2026-07-26');
+		expect(waterRepository.setTodayWater)
+			.toHaveBeenCalledWith(7, '2026-07-26', 500);
 	});
 
 	test('rejects an invalid user id before accessing the repository', async () => {
 		await expect(waterService.getTodayWater(0))
 			.rejects.toMatchObject({ status: 400 });
 		expect(waterRepository.getTodayWater).not.toHaveBeenCalled();
+		expect(getUserLocalDate).not.toHaveBeenCalled();
 	});
 });
 
@@ -128,6 +137,8 @@ describe('sleep service', () => {
 			createdAt: '2026-07-26T06:00:00.000Z',
 			updatedAt: '2026-07-26T06:00:00.000Z',
 		});
+		expect(sleepRepository.getTodaySleep)
+			.toHaveBeenCalledWith(7, '2026-07-26');
 	});
 
 	test.each([
@@ -161,11 +172,15 @@ describe('sleep service', () => {
 			sleepMinutes: 2,
 			sleepQuality: 4,
 		});
-		expect(sleepRepository.upsertTodaySleep).toHaveBeenCalledWith(1, {
-			sleepStart: storedSleep.sleepStart,
-			sleepEnd: storedSleep.sleepEnd,
-			sleepQuality: 4,
-		});
+		expect(sleepRepository.upsertTodaySleep).toHaveBeenCalledWith(
+			1,
+			'2026-07-26',
+			{
+				sleepStart: storedSleep.sleepStart,
+				sleepEnd: storedSleep.sleepEnd,
+				sleepQuality: 4,
+			},
+		);
 	});
 });
 
@@ -193,6 +208,8 @@ describe('mood service', () => {
 			createdAt: '2026-07-26T08:00:00.000Z',
 			updatedAt: '2026-07-26T08:00:00.000Z',
 		});
+		expect(moodRepository.getTodayMood)
+			.toHaveBeenCalledWith(7, '2026-07-26');
 	});
 
 	test('allows all optional mood fields to be omitted', async () => {
@@ -210,7 +227,7 @@ describe('mood service', () => {
 		await expect(moodService.updateTodayMood(1, { moodScore: 5 }))
 			.resolves.not.toHaveProperty('moodLabel');
 		expect(moodRepository.upsertTodayMood)
-			.toHaveBeenCalledWith(1, { moodScore: 5 });
+			.toHaveBeenCalledWith(1, '2026-07-26', { moodScore: 5 });
 	});
 });
 
@@ -229,7 +246,8 @@ describe('daily service', () => {
 			steps: 4321,
 			calories: 650.5,
 		});
-		expect(dailyRepository.getToday).toHaveBeenCalledWith(7);
+		expect(dailyRepository.getToday)
+			.toHaveBeenCalledWith(7, '2026-07-26');
 	});
 
 	test('passes a partial update without coercing contract values', async () => {
@@ -240,9 +258,13 @@ describe('daily service', () => {
 		});
 
 		await dailyService.updateToday(1, { calories: 42.5 });
-		expect(dailyRepository.upsertToday).toHaveBeenCalledWith(1, {
-			steps: undefined,
-			calories: 42.5,
-		});
+		expect(dailyRepository.upsertToday).toHaveBeenCalledWith(
+			1,
+			'2026-07-26',
+			{
+				steps: undefined,
+				calories: 42.5,
+			},
+		);
 	});
 });

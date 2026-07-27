@@ -7,6 +7,7 @@ const tables = [
 	'auth_sessions',
 	'weight_entries',
 	'admin_login_attempts',
+	'user_settings',
 	'favorites',
 	'daily_tracking',
 	'mood_entries',
@@ -57,6 +58,10 @@ describe('Daily tracking PostgreSQL contracts', () => {
 
 	afterAll(async () => {
 		await closeDatabase();
+	});
+
+	afterEach(() => {
+		jest.restoreAllMocks();
 	});
 
 	test('persists contract DTOs and singleton replacement semantics', async () => {
@@ -209,7 +214,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 				mood_date,
 				mood_score
 			 )
-			 VALUES (1, CURRENT_DATE, 6)`,
+			 VALUES (1, DATE '2026-07-26', 6)`,
 		)).rejects.toMatchObject({ code: '23514' });
 
 		await expect(pool.query(
@@ -219,7 +224,102 @@ describe('Daily tracking PostgreSQL contracts', () => {
 				steps,
 				calories
 			 )
-			 VALUES (1, CURRENT_DATE, 200001, 0)`,
+			 VALUES (1, DATE '2026-07-26', 200001, 0)`,
 		)).rejects.toMatchObject({ code: '23514' });
+	});
+
+	test('uses the user local date independently from the PostgreSQL timezone', async () => {
+		jest.spyOn(Date, 'now')
+			.mockReturnValue(Date.parse('2026-07-27T00:30:00.000Z'));
+
+		await request(app)
+			.patch('/api/v1/settings')
+			.set('Authorization', auth)
+			.send({ timezone: 'America/Los_Angeles' })
+			.expect(200);
+
+		await request(app)
+			.put('/api/v1/water/today')
+			.set('Authorization', auth)
+			.send({ amountMl: 750 })
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.date).toBe('2026-07-26');
+			});
+		await request(app)
+			.put('/api/v1/sleep/today')
+			.set('Authorization', auth)
+			.send({
+				sleepStart: '2026-07-26T06:00:00.000Z',
+				sleepEnd: '2026-07-26T14:00:00.000Z',
+				sleepQuality: 4,
+			})
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.date).toBe('2026-07-26');
+			});
+		await request(app)
+			.put('/api/v1/mood/today')
+			.set('Authorization', auth)
+			.send({ moodScore: 5 })
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.date).toBe('2026-07-26');
+			});
+		await request(app)
+			.put('/api/v1/daily/today')
+			.set('Authorization', auth)
+			.send({ steps: 1234 })
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.date).toBe('2026-07-26');
+			});
+		await request(app)
+			.put('/api/v1/profile')
+			.set('Authorization', auth)
+			.send({ weightKg: 68 })
+			.expect(200);
+
+		const localDates = await Promise.all([
+			pool.query('SELECT water_date::text AS date FROM water_entries'),
+			pool.query('SELECT sleep_date::text AS date FROM sleep_entries'),
+			pool.query('SELECT mood_date::text AS date FROM mood_entries'),
+			pool.query('SELECT entry_date::text AS date FROM weight_entries'),
+		]);
+		for (const result of localDates) {
+			expect(result.rows).toEqual([{ date: '2026-07-26' }]);
+		}
+
+		Date.now.mockReturnValue(Date.parse('2026-07-27T12:30:00.000Z'));
+		await request(app)
+			.patch('/api/v1/settings')
+			.set('Authorization', auth)
+			.send({ timezone: 'Pacific/Kiritimati' })
+			.expect(200);
+		await request(app)
+			.put('/api/v1/daily/today')
+			.set('Authorization', auth)
+			.send({ steps: 4321 })
+			.expect(200);
+		await request(app)
+			.get('/api/v1/daily/today')
+			.set('Authorization', auth)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toMatchObject({
+					date: '2026-07-28',
+					steps: 4321,
+				});
+			});
+
+		const dailyDates = await pool.query(
+			`SELECT tracking_date::text AS date
+			 FROM daily_tracking
+			 ORDER BY tracking_date`,
+		);
+		expect(dailyDates.rows).toEqual([
+			{ date: '2026-07-26' },
+			{ date: '2026-07-28' },
+		]);
 	});
 });

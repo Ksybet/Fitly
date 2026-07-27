@@ -2,8 +2,14 @@ jest.mock('../../src/modules/profile/profile.repository', () => ({
 	findProfileByUserId: jest.fn(),
 	saveProfile: jest.fn(),
 }));
+jest.mock('../../src/modules/settings/user-local-date.service', () => ({
+	getUserLocalDate: jest.fn().mockResolvedValue('2026-07-26'),
+}));
 
 const profileRepository = require('../../src/modules/profile/profile.repository');
+const {
+	getUserLocalDate,
+} = require('../../src/modules/settings/user-local-date.service');
 const {
 	getProfile,
 	updateProfile,
@@ -59,8 +65,9 @@ describe('profile service', () => {
 				heightCm: storedProfile.heightCm,
 				weightKg: storedProfile.weightKg,
 			},
-			{ recordWeight: false },
+			{ recordWeight: false, weightDate: null },
 		);
+		expect(getUserLocalDate).not.toHaveBeenCalled();
 	});
 
 	test('requests a daily weight upsert only when weightKg is supplied', async () => {
@@ -76,7 +83,8 @@ describe('profile service', () => {
 		expect(profileRepository.saveProfile).toHaveBeenCalledWith(
 			1,
 			expect.objectContaining({ weightKg: 67.5 }),
-			{ recordWeight: true },
+			{ recordWeight: true, weightDate: '2026-07-26' },
 		);
+		expect(getUserLocalDate).toHaveBeenCalledWith(1);
 	});
 });

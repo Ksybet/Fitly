@@ -5,6 +5,9 @@ const {
 const { ApiError } = require('../../utils/api-error');
 const { ensureValidUserId } = require('../../utils/validation');
 const { toProfileDto } = require('./profile.mapper');
+const {
+	getUserLocalDate,
+} = require('../settings/user-local-date.service');
 
 function hasOwn(object, property) {
 	return Object.prototype.hasOwnProperty.call(object, property);
@@ -28,6 +31,10 @@ async function updateProfile(userId, data) {
 		throw new ApiError(401, 'Unauthorized');
 	}
 
+	const recordWeight = hasOwn(data, 'weightKg');
+	const weightDate = recordWeight
+		? await getUserLocalDate(normalizedUserId)
+		: null;
 	const updatedProfile = await saveProfile(
 		normalizedUserId,
 		{
@@ -47,7 +54,7 @@ async function updateProfile(userId, data) {
 				? data.weightKg
 				: existingProfile.weightKg,
 		},
-		{ recordWeight: hasOwn(data, 'weightKg') },
+		{ recordWeight, weightDate },
 	);
 
 	return toProfileDto(updatedProfile);

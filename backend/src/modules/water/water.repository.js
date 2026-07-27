@@ -2,7 +2,7 @@ const { pool } = require('../../config/db');
 
 const waterDayQuery = `
 	SELECT
-		CURRENT_DATE::text AS date,
+		$2::date::text AS date,
 		COALESCE(entry.amount_ml, 0)::integer AS "amountMl",
 		COALESCE(
 			(
@@ -20,29 +20,29 @@ const waterDayQuery = `
 	FROM (SELECT 1) singleton
 	LEFT JOIN water_entries entry
 		ON entry.user_id = $1
-	   AND entry.water_date = CURRENT_DATE
+	   AND entry.water_date = $2::date
 `;
 
-async function getTodayWater(userId) {
-	const result = await pool.query(waterDayQuery, [userId]);
+async function getTodayWater(userId, date) {
+	const result = await pool.query(waterDayQuery, [userId, date]);
 	return result.rows[0];
 }
 
-async function setTodayWater(userId, amountMl) {
+async function setTodayWater(userId, date, amountMl) {
 	await pool.query(
 		`INSERT INTO water_entries (
 			user_id,
 			water_date,
 			amount_ml
 		 )
-		 VALUES ($1, CURRENT_DATE, $2)
+		 VALUES ($1, $2::date, $3)
 		 ON CONFLICT (user_id, water_date) DO UPDATE
 		 SET amount_ml = EXCLUDED.amount_ml,
 		     recorded_at = CURRENT_TIMESTAMP`,
-		[userId, amountMl],
+		[userId, date, amountMl],
 	);
 
-	return getTodayWater(userId);
+	return getTodayWater(userId, date);
 }
 
 module.exports = {

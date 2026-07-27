@@ -18,6 +18,9 @@ jest.mock('../../src/modules/daily/daily.repository', () => ({
 	getToday: jest.fn(),
 	upsertToday: jest.fn(),
 }));
+jest.mock('../../src/modules/settings/user-local-date.service', () => ({
+	getUserLocalDate: jest.fn().mockResolvedValue('2026-07-26'),
+}));
 
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -85,7 +88,8 @@ describe('daily tracking HTTP contracts', () => {
 				goalMl: 2000,
 				progressPercent: 25,
 			}));
-		expect(waterRepository.setTodayWater).toHaveBeenCalledWith(7, 500);
+		expect(waterRepository.setTodayWater)
+			.toHaveBeenCalledWith(7, '2026-07-26', 500);
 
 		await request(app)
 			.post('/api/v1/water/today')

@@ -151,7 +151,7 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 		const weightResult = await pool.query(
 			`SELECT weight_kg::double precision AS "weightKg"
 			 FROM weight_entries
-			 WHERE user_id = $1 AND entry_date = CURRENT_DATE`,
+			 WHERE user_id = $1`,
 			[1],
 		);
 		expect(weightResult.rows).toEqual([{ weightKg: 68 }]);

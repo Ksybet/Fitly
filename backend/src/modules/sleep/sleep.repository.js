@@ -12,19 +12,19 @@ const sleepColumns = `
 	updated_at AS "updatedAt"
 `;
 
-async function getTodaySleep(userId) {
+async function getTodaySleep(userId, date) {
 	const result = await pool.query(
 		`SELECT ${sleepColumns}
 		 FROM sleep_entries
 		 WHERE user_id = $1
-		   AND sleep_date = CURRENT_DATE`,
-		[userId],
+		   AND sleep_date = $2::date`,
+		[userId, date],
 	);
 
 	return result.rows[0] || null;
 }
 
-async function upsertTodaySleep(userId, sleepData) {
+async function upsertTodaySleep(userId, date, sleepData) {
 	const result = await pool.query(
 		`INSERT INTO sleep_entries (
 			user_id,
@@ -33,7 +33,7 @@ async function upsertTodaySleep(userId, sleepData) {
 			sleep_end,
 			sleep_quality
 		 )
-		 VALUES ($1, CURRENT_DATE, $2, $3, $4)
+		 VALUES ($1, $2::date, $3, $4, $5)
 		 ON CONFLICT (user_id, sleep_date) DO UPDATE
 		 SET sleep_start = EXCLUDED.sleep_start,
 		     sleep_end = EXCLUDED.sleep_end,
@@ -42,6 +42,7 @@ async function upsertTodaySleep(userId, sleepData) {
 		 RETURNING ${sleepColumns}`,
 		[
 			userId,
+			date,
 			sleepData.sleepStart,
 			sleepData.sleepEnd,
 			sleepData.sleepQuality,

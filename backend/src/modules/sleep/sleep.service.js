@@ -2,11 +2,14 @@ const sleepRepository = require('./sleep.repository');
 const { ApiError } = require('../../utils/api-error');
 const { ensureValidUserId } = require('../../utils/validation');
 const { toSleepEntryDto } = require('./sleep.mapper');
+const {
+	getUserLocalDate,
+} = require('../settings/user-local-date.service');
 
 async function getTodaySleep(userId) {
-	const sleep = await sleepRepository.getTodaySleep(
-		ensureValidUserId(userId),
-	);
+	const normalizedUserId = ensureValidUserId(userId);
+	const date = await getUserLocalDate(normalizedUserId);
+	const sleep = await sleepRepository.getTodaySleep(normalizedUserId, date);
 
 	return toSleepEntryDto(sleep);
 }
@@ -26,8 +29,11 @@ async function updateTodaySleep(userId, sleepData) {
 		});
 	}
 
+	const normalizedUserId = ensureValidUserId(userId);
+	const date = await getUserLocalDate(normalizedUserId);
 	const sleep = await sleepRepository.upsertTodaySleep(
-		ensureValidUserId(userId),
+		normalizedUserId,
+		date,
 		{
 			sleepStart: sleepData.sleepStart,
 			sleepEnd: sleepData.sleepEnd,

@@ -31,7 +31,7 @@ async function findProfileByUserId(userId) {
 	return result.rows[0] || null;
 }
 
-async function saveProfile(userId, profile, { recordWeight }) {
+async function saveProfile(userId, profile, { recordWeight, weightDate }) {
 	const client = await pool.connect();
 
 	try {
@@ -70,11 +70,11 @@ async function saveProfile(userId, profile, { recordWeight }) {
 					entry_date,
 					weight_kg
 				 )
-				 VALUES ($1, CURRENT_DATE, $2)
+				 VALUES ($1, $2::date, $3)
 				 ON CONFLICT (user_id, entry_date) DO UPDATE
 				 SET weight_kg = EXCLUDED.weight_kg,
 				     updated_at = CURRENT_TIMESTAMP`,
-				[userId, profile.weightKg],
+				[userId, weightDate, profile.weightKg],
 			);
 		}
 
