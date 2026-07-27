@@ -194,4 +194,111 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 				expect(response.body.error.requestId).toMatch(requestIdPattern);
 			});
 	});
+
+	test('rotates a refresh token once and persists only token hashes', async () => {
+		const registerResponse = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'refresh@example.com',
+				password: 'Fitly#2026',
+			})
+			.expect(201);
+		const previousRefreshToken = registerResponse.body.data.refreshToken;
+
+		const refreshResponse = await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: previousRefreshToken })
+			.expect(200);
+
+		expect(refreshResponse.body.data).toEqual({
+			token: expect.any(String),
+			refreshToken: expect.any(String),
+			tokenType: 'Bearer',
+			expiresIn: 3600,
+		});
+		expect(refreshResponse.body.data).not.toHaveProperty('user');
+		expect(refreshResponse.body.data.refreshToken).not.toBe(previousRefreshToken);
+
+		const sessions = await pool.query(
+			`SELECT
+				refresh_token_hash AS "refreshTokenHash",
+				revoked_at AS "revokedAt"
+			 FROM auth_sessions
+			 WHERE user_id = $1
+			 ORDER BY id`,
+			[1],
+		);
+
+		expect(sessions.rows).toHaveLength(2);
+		expect(sessions.rows[0].revokedAt).toEqual(expect.any(Date));
+		expect(sessions.rows[1].revokedAt).toBeNull();
+		for (const session of sessions.rows) {
+			expect(session.refreshTokenHash).toMatch(/^[0-9a-f]{64}$/);
+			expect(session.refreshTokenHash).not.toBe(previousRefreshToken);
+			expect(session.refreshTokenHash)
+				.not.toBe(refreshResponse.body.data.refreshToken);
+		}
+
+		await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: previousRefreshToken })
+			.expect(401)
+			.expect(response => {
+				expect(response.body.error.code).toBe('UNAUTHORIZED');
+			});
+	});
+
+	test('allows only one concurrent rotation of the same refresh token', async () => {
+		const registerResponse = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'concurrent@example.com',
+				password: 'Fitly#2026',
+			})
+			.expect(201);
+		const refreshToken = registerResponse.body.data.refreshToken;
+
+		const responses = await Promise.all([
+			request(app)
+				.post('/api/v1/auth/refresh')
+				.send({ refreshToken }),
+			request(app)
+				.post('/api/v1/auth/refresh')
+				.send({ refreshToken }),
+		]);
+
+		expect(responses.map(response => response.status).sort())
+			.toEqual([200, 401]);
+
+		const sessionCount = await pool.query(
+			'SELECT COUNT(*)::integer AS count FROM auth_sessions WHERE user_id = $1',
+			[1],
+		);
+		expect(sessionCount.rows[0].count).toBe(2);
+	});
+
+	test('rejects an expired refresh session', async () => {
+		const registerResponse = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'expired@example.com',
+				password: 'Fitly#2026',
+			})
+			.expect(201);
+
+		await pool.query(
+			`UPDATE auth_sessions
+			 SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 minute'
+			 WHERE user_id = $1`,
+			[1],
+		);
+
+		await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: registerResponse.body.data.refreshToken })
+			.expect(401)
+			.expect(response => {
+				expect(response.body.error.code).toBe('UNAUTHORIZED');
+			});
+	});
 });

@@ -1,6 +1,7 @@
 const {
 	loginUser,
 	registerUser,
+	refreshAuthTokens,
 	getCurrentUser,
 } = require('./auth.service');
 const { sendSuccess } = require('../../utils/http-response');
@@ -35,6 +36,16 @@ async function register(req, res, next) {
 	}
 }
 
+async function refresh(req, res, next) {
+	try {
+		const result = await refreshAuthTokens(req.body.refreshToken);
+
+		return sendSuccess(res, result);
+	} catch (error) {
+		next(error);
+	}
+}
+
 async function me(req, res, next) {
 	try {
 		const user = await getCurrentUser(req.user.userId);
@@ -48,5 +59,6 @@ async function me(req, res, next) {
 module.exports = {
 	login,
 	register,
+	refresh,
 	me,
 };

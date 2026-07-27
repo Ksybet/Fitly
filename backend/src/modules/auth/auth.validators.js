@@ -8,6 +8,7 @@ const REGISTER_FIELDS = new Set([
 	'appVersion',
 ]);
 const LOGIN_FIELDS = new Set(['login', 'password', 'appVersion']);
+const REFRESH_TOKEN_FIELDS = new Set(['refreshToken']);
 
 function isPlainObject(value) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -156,7 +157,36 @@ function validateRegisterRequest(req, res, next) {
 	return rejectIfInvalid(details, next);
 }
 
+function validateRefreshTokenRequest(req, res, next) {
+	const details = [];
+	const body = req.body;
+
+	if (validateBodyShape(body, REFRESH_TOKEN_FIELDS, details)) {
+		if (!Object.prototype.hasOwnProperty.call(body, 'refreshToken')) {
+			addDetail(
+				details,
+				'refreshToken',
+				'REQUIRED',
+				'refreshToken is required',
+			);
+		} else if (
+			typeof body.refreshToken !== 'string'
+			|| body.refreshToken.length < 20
+		) {
+			addDetail(
+				details,
+				'refreshToken',
+				'INVALID_LENGTH',
+				'refreshToken must contain at least 20 characters',
+			);
+		}
+	}
+
+	return rejectIfInvalid(details, next);
+}
+
 module.exports = {
 	validateLoginRequest,
 	validateRegisterRequest,
+	validateRefreshTokenRequest,
 };

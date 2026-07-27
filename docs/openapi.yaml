@@ -332,6 +332,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/AuthTokens'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -4039,7 +4041,7 @@ components:
                   code: PASSWORD_TOO_WEAK
                   message: Пароль не соответствует требованиям
     Unauthorized:
-      description: Access-токен отсутствует, истёк или недействителен
+      description: Access- или refresh-токен отсутствует, истёк, отозван или недействителен
       content:
         application/json:
           schema:
@@ -4402,9 +4404,9 @@ components:
     RefreshTokenRequest:
       type: object
       description: |
-        Тело обновления сессии. Здесь передаётся refresh-токен, а не access JWT.
-        Успешная операция инвалидирует использованное значение и возвращает новую
-        пару токенов.
+        Тело операции с серверной сессией. Здесь передаётся refresh-токен, а не
+        access JWT. Конкретное действие — ротация или завершение сессии — задаётся
+        выбранной операцией.
       additionalProperties: false
       required: [refreshToken]
       properties:

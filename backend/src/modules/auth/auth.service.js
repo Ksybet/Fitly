@@ -12,7 +12,10 @@ const {
 	generateRefreshToken,
 	hashRefreshToken,
 } = require('../../utils/token');
-const { createSession } = require('./auth-session.repository');
+const {
+	createSession,
+	rotateSession,
+} = require('./auth-session.repository');
 const { toUserDto } = require('./auth.mapper');
 const {
 	recordAdminLoginAttempt,
@@ -33,13 +36,23 @@ async function recordRejectedAdminLogin(user, failureReason, requestMetadata) {
 	}
 }
 
-async function issueAuthData(user, appVersion) {
+function issueAccessToken(user, appVersion) {
 	const accessToken = generateAccessToken({
 		userId: user.id,
 		email: user.email,
 		role: user.role,
 		...(appVersion === undefined ? {} : { appVersion }),
 	});
+
+	return {
+		token: accessToken,
+		tokenType: 'Bearer',
+		expiresIn: getAccessTokenExpiresIn(accessToken),
+	};
+}
+
+async function issueAuthData(user, appVersion) {
+	const accessTokens = issueAccessToken(user, appVersion);
 	const refreshToken = generateRefreshToken();
 
 	await createSession({
@@ -49,11 +62,33 @@ async function issueAuthData(user, appVersion) {
 	});
 
 	return {
-		token: accessToken,
+		...accessTokens,
 		refreshToken,
-		tokenType: 'Bearer',
-		expiresIn: getAccessTokenExpiresIn(accessToken),
 		user: toUserDto(user),
+	};
+}
+
+async function refreshAuthTokens(refreshToken) {
+	const nextRefreshToken = generateRefreshToken();
+	const rotatedSession = await rotateSession({
+		refreshTokenHash: hashRefreshToken(refreshToken),
+		nextRefreshTokenHash: hashRefreshToken(nextRefreshToken),
+		nextExpiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+	});
+
+	if (!rotatedSession) {
+		throw new ApiError(401, 'Invalid or expired refresh token');
+	}
+
+	const user = await findUserById(rotatedSession.userId);
+
+	if (!user || !user.isActive) {
+		throw new ApiError(401, 'Unauthorized');
+	}
+
+	return {
+		...issueAccessToken(user, user.appVersion ?? undefined),
+		refreshToken: nextRefreshToken,
 	};
 }
 
@@ -145,5 +180,6 @@ async function getCurrentUser(userId) {
 module.exports = {
 	loginUser,
 	registerUser,
+	refreshAuthTokens,
 	getCurrentUser,
 };

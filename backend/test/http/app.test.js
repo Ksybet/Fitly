@@ -162,6 +162,35 @@ describe('HTTP application contracts', () => {
 		});
 	});
 
+	test('refresh validates the documented request body before accessing the database', async () => {
+		await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: 'short', unknown: true })
+			.expect(400)
+			.expect(response => {
+				expect(response.body).toMatchObject({
+					success: false,
+					message: 'Request validation failed',
+					error: {
+						code: 'VALIDATION_ERROR',
+						requestId: expect.stringMatching(requestIdPattern),
+						details: expect.arrayContaining([
+							expect.objectContaining({
+								field: 'unknown',
+								code: 'UNKNOWN_FIELD',
+							}),
+							expect.objectContaining({
+								field: 'refreshToken',
+								code: 'INVALID_LENGTH',
+							}),
+						]),
+					},
+				});
+			});
+
+		expect(pool.query).not.toHaveBeenCalled();
+	});
+
 	test('malformed JSON returns a contract validation error', async () => {
 		await request(app)
 			.post('/api/v1/auth/login')

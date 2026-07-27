@@ -6,6 +6,7 @@ jest.mock('../../src/modules/user/user.repository', () => ({
 }));
 jest.mock('../../src/modules/auth/auth-session.repository', () => ({
 	createSession: jest.fn(),
+	rotateSession: jest.fn(),
 }));
 jest.mock('bcryptjs', () => ({ compare: jest.fn(), hash: jest.fn() }));
 jest.mock('../../src/utils/token', () => ({
@@ -20,7 +21,10 @@ jest.mock('../../src/modules/admin/admin-login-audit.service', () => ({
 
 const bcrypt = require('bcryptjs');
 const userRepository = require('../../src/modules/user/user.repository');
-const { createSession } = require('../../src/modules/auth/auth-session.repository');
+const {
+	createSession,
+	rotateSession,
+} = require('../../src/modules/auth/auth-session.repository');
 const token = require('../../src/utils/token');
 const {
 	recordAdminLoginAttempt,
@@ -28,6 +32,7 @@ const {
 const {
 	loginUser,
 	registerUser,
+	refreshAuthTokens,
 	getCurrentUser,
 } = require('../../src/modules/auth/auth.service');
 
@@ -51,6 +56,7 @@ describe('auth service', () => {
 		token.hashRefreshToken.mockReturnValue('refresh-hash');
 		token.getAccessTokenExpiresIn.mockReturnValue(3600);
 		createSession.mockResolvedValue({ id: 1 });
+		rotateSession.mockResolvedValue({ id: 2, userId: 7 });
 	});
 
 	test('uses the same invalid-credentials response for missing, blocked, and mismatched users', async () => {
@@ -143,6 +149,47 @@ describe('auth service', () => {
 			role: 'user',
 		});
 		expect(result.user.appVersion).toBe('1.0.0');
+	});
+
+	test('rotates a refresh token and returns only the documented token pair', async () => {
+		const user = { ...activeUser, appVersion: '1.2.3' };
+		userRepository.findUserById.mockResolvedValue(user);
+		token.generateRefreshToken.mockReturnValue('next-refresh-token');
+		token.hashRefreshToken
+			.mockReturnValueOnce('current-refresh-hash')
+			.mockReturnValueOnce('next-refresh-hash');
+
+		const result = await refreshAuthTokens('current-refresh-token');
+
+		expect(rotateSession).toHaveBeenCalledWith({
+			refreshTokenHash: 'current-refresh-hash',
+			nextRefreshTokenHash: 'next-refresh-hash',
+			nextExpiresAt: expect.any(Date),
+		});
+		expect(token.generateAccessToken).toHaveBeenCalledWith({
+			userId: 7,
+			email: activeUser.email,
+			role: 'user',
+			appVersion: '1.2.3',
+		});
+		expect(result).toEqual({
+			token: 'access-token',
+			refreshToken: 'next-refresh-token',
+			tokenType: 'Bearer',
+			expiresIn: 3600,
+		});
+		expect(result).not.toHaveProperty('user');
+	});
+
+	test('rejects an invalid or already rotated refresh token', async () => {
+		rotateSession.mockResolvedValueOnce(null);
+
+		await expect(refreshAuthTokens('invalid-refresh-token'))
+			.rejects.toMatchObject({
+				status: 401,
+				code: 'UNAUTHORIZED',
+			});
+		expect(userRepository.findUserById).not.toHaveBeenCalled();
 	});
 
 	test('keeps administrator audit behavior without exposing account state', async () => {
