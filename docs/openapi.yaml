@@ -529,7 +529,26 @@ paths:
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Access-токен недействителен либо указан неверный текущий пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  value:
+                    success: false
+                    message: Требуется авторизация
+                    error:
+                      code: UNAUTHORIZED
+                      requestId: req_01J0Y7Y0QZ5M4X2D7F8A
+                invalidCredentials:
+                  value:
+                    success: false
+                    message: Неверный пароль
+                    error:
+                      code: INVALID_CREDENTIALS
+                      requestId: req_01J0Y7Y0QZ5M4X2D7F8A
 
   /api/v1/profile:
     get:

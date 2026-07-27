@@ -29,7 +29,11 @@ describe('account service', () => {
 		bcrypt.compare.mockResolvedValueOnce(false);
 
 		await expect(deleteAccount(1, 'wrong'))
-			.rejects.toMatchObject({ status: 401, message: 'Invalid password' });
+			.rejects.toMatchObject({
+				status: 401,
+				code: 'INVALID_CREDENTIALS',
+				message: 'Invalid password',
+			});
 		expect(userRepository.deleteUserById).not.toHaveBeenCalled();
 
 		bcrypt.compare.mockResolvedValueOnce(true);

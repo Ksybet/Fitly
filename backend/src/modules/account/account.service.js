@@ -17,7 +17,9 @@ async function deleteAccount(userId, password) {
 	const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
 
 	if (!isPasswordValid) {
-		throw new ApiError(401, 'Invalid password');
+		throw new ApiError(401, 'Invalid password', {
+			code: 'INVALID_CREDENTIALS',
+		});
 	}
 
 	await deleteUserById(normalizedUserId);
