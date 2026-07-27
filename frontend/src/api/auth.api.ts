@@ -1,6 +1,12 @@
 import httpClient from './httpClient';
 import { unwrapData } from './response';
-import type { AuthData, SuccessEnvelope, User } from './contracts';
+import type {
+	ActionResult,
+	AuthData,
+	AuthTokens,
+	SuccessEnvelope,
+	User,
+} from './contracts';
 
 type LoginRequest = {
 	login: string;
@@ -28,6 +34,28 @@ export async function register(payload: RegisterRequest): Promise<AuthData> {
 	const response = await httpClient.post<SuccessEnvelope<AuthData>>(
 		'/auth/register',
 		payload,
+	);
+
+	return unwrapData(response);
+}
+
+export async function refreshTokens(
+	refreshToken: string,
+): Promise<AuthTokens> {
+	const response = await httpClient.post<SuccessEnvelope<AuthTokens>>(
+		'/auth/refresh',
+		{ refreshToken },
+	);
+
+	return unwrapData(response);
+}
+
+export async function logout(
+	refreshToken: string,
+): Promise<ActionResult> {
+	const response = await httpClient.post<SuccessEnvelope<ActionResult>>(
+		'/auth/logout',
+		{ refreshToken },
 	);
 
 	return unwrapData(response);

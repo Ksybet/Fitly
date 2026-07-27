@@ -10,6 +10,7 @@ import React, {
 import {
 	getMe,
 	login as loginRequest,
+	logout as logoutRequest,
 	register as registerRequest,
 } from '../api/auth.api';
 import {
@@ -18,7 +19,11 @@ import {
 	withRequestId,
 } from '../api/api-error';
 import type { User } from '../api/contracts';
-import { setUnauthorizedHandler } from '../api/httpClient';
+import {
+	setSessionRefreshedHandler,
+	setUnauthorizedHandler,
+	waitForPendingSessionRefresh,
+} from '../api/httpClient';
 import {
 	clearStoredSession,
 	getStoredSession,
@@ -103,8 +108,15 @@ export const AuthProvider = ({ children }: Props) => {
 			await clearSession();
 			router.replace('/login');
 		});
+		setSessionRefreshedHandler(session => {
+			setToken(session.token);
+			setUser(session.user);
+		});
 
-		return () => setUnauthorizedHandler(null);
+		return () => {
+			setUnauthorizedHandler(null);
+			setSessionRefreshedHandler(null);
+		};
 	}, [clearSession]);
 
 	useEffect(() => {
@@ -124,9 +136,10 @@ export const AuthProvider = ({ children }: Props) => {
 				try {
 					const currentUser = await getMe();
 					await updateStoredUser(currentUser);
+					const currentSession = await getStoredSession();
 
-					if (isMounted) {
-						setToken(storedSession.token);
+					if (isMounted && currentSession) {
+						setToken(currentSession.token);
 						setUser(currentUser);
 					}
 				} catch (sessionError) {
@@ -197,6 +210,25 @@ export const AuthProvider = ({ children }: Props) => {
 	};
 
 	const logout = async (): Promise<void> => {
+		await waitForPendingSessionRefresh();
+		const session = await getStoredSession();
+
+		if (!session?.refreshToken) {
+			await clearSession();
+			router.replace('/login');
+			return;
+		}
+
+		try {
+			await logoutRequest(session.refreshToken);
+		} catch (requestError) {
+			const apiError = normalizeApiError(requestError);
+
+			if (apiError.status !== 401) {
+				throw apiError;
+			}
+		}
+
 		await clearSession();
 		router.replace('/login');
 	};
