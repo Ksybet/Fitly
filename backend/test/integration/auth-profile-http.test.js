@@ -301,4 +301,92 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 				expect(response.body.error.code).toBe('UNAUTHORIZED');
 			});
 	});
+
+	test('logs out only a refresh session owned by the authenticated user', async () => {
+		const firstUser = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'first@example.com',
+				password: 'Fitly#2026',
+			})
+			.expect(201);
+		const secondUser = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'second@example.com',
+				password: 'Fitly#2026',
+			})
+			.expect(201);
+
+		await request(app)
+			.post('/api/v1/auth/logout')
+			.set('Authorization', `Bearer ${firstUser.body.data.token}`)
+			.send({ refreshToken: secondUser.body.data.refreshToken })
+			.expect(401);
+
+		const secondRefresh = await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: secondUser.body.data.refreshToken })
+			.expect(200);
+
+		await request(app)
+			.post('/api/v1/auth/logout')
+			.set('Authorization', `Bearer ${firstUser.body.data.token}`)
+			.send({ refreshToken: firstUser.body.data.refreshToken })
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({ completed: true });
+			});
+
+		await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: firstUser.body.data.refreshToken })
+			.expect(401);
+
+		expect(secondRefresh.body.data.refreshToken).toEqual(expect.any(String));
+	});
+
+	test('logs out all sessions for one user without affecting another user', async () => {
+		const password = 'Fitly#2026';
+		const firstSession = await request(app)
+			.post('/api/v1/auth/register')
+			.send({ email: 'all@example.com', password })
+			.expect(201);
+		const secondSession = await request(app)
+			.post('/api/v1/auth/login')
+			.send({ login: 'all@example.com', password })
+			.expect(200);
+		const otherUser = await request(app)
+			.post('/api/v1/auth/register')
+			.send({ email: 'other@example.com', password })
+			.expect(201);
+
+		await request(app)
+			.post('/api/v1/auth/logout-all')
+			.set('Authorization', `Bearer ${firstSession.body.data.token}`)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({ completed: true });
+			});
+
+		for (const refreshToken of [
+			firstSession.body.data.refreshToken,
+			secondSession.body.data.refreshToken,
+		]) {
+			await request(app)
+				.post('/api/v1/auth/refresh')
+				.send({ refreshToken })
+				.expect(401);
+		}
+
+		await request(app)
+			.post('/api/v1/auth/refresh')
+			.send({ refreshToken: otherUser.body.data.refreshToken })
+			.expect(200);
+
+		await request(app)
+			.post('/api/v1/auth/logout-all')
+			.set('Authorization', `Bearer ${firstSession.body.data.token}`)
+			.expect(200);
+	});
 });

@@ -191,6 +191,56 @@ describe('HTTP application contracts', () => {
 		expect(pool.query).not.toHaveBeenCalled();
 	});
 
+	test('logout requires a valid access token before validating the refresh token', async () => {
+		await request(app)
+			.post('/api/v1/auth/logout')
+			.send({ refreshToken: 'valid-looking-refresh-token' })
+			.expect(401)
+			.expect(response => expectErrorResponse(response, {
+				code: 'UNAUTHORIZED',
+				message: 'Unauthorized',
+			}));
+
+		expect(pool.query).not.toHaveBeenCalled();
+	});
+
+	test('logout validates its refresh token after access authentication', async () => {
+		await request(app)
+			.post('/api/v1/auth/logout')
+			.set('Authorization', createAuthorization())
+			.send({ refreshToken: 'short' })
+			.expect(400)
+			.expect(response => {
+				expect(response.body).toMatchObject({
+					success: false,
+					message: 'Request validation failed',
+					error: {
+						code: 'VALIDATION_ERROR',
+						details: [
+							expect.objectContaining({
+								field: 'refreshToken',
+								code: 'INVALID_LENGTH',
+							}),
+						],
+					},
+				});
+			});
+
+		expect(pool.query).not.toHaveBeenCalled();
+	});
+
+	test('logout-all requires a valid access token', async () => {
+		await request(app)
+			.post('/api/v1/auth/logout-all')
+			.expect(401)
+			.expect(response => expectErrorResponse(response, {
+				code: 'UNAUTHORIZED',
+				message: 'Unauthorized',
+			}));
+
+		expect(pool.query).not.toHaveBeenCalled();
+	});
+
 	test('malformed JSON returns a contract validation error', async () => {
 		await request(app)
 			.post('/api/v1/auth/login')

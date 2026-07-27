@@ -7,6 +7,8 @@ jest.mock('../../src/modules/user/user.repository', () => ({
 jest.mock('../../src/modules/auth/auth-session.repository', () => ({
 	createSession: jest.fn(),
 	rotateSession: jest.fn(),
+	revokeSession: jest.fn(),
+	revokeAllSessions: jest.fn(),
 }));
 jest.mock('bcryptjs', () => ({ compare: jest.fn(), hash: jest.fn() }));
 jest.mock('../../src/utils/token', () => ({
@@ -24,6 +26,8 @@ const userRepository = require('../../src/modules/user/user.repository');
 const {
 	createSession,
 	rotateSession,
+	revokeSession,
+	revokeAllSessions,
 } = require('../../src/modules/auth/auth-session.repository');
 const token = require('../../src/utils/token');
 const {
@@ -33,6 +37,8 @@ const {
 	loginUser,
 	registerUser,
 	refreshAuthTokens,
+	logoutSession,
+	logoutAllSessions,
 	getCurrentUser,
 } = require('../../src/modules/auth/auth.service');
 
@@ -57,6 +63,8 @@ describe('auth service', () => {
 		token.getAccessTokenExpiresIn.mockReturnValue(3600);
 		createSession.mockResolvedValue({ id: 1 });
 		rotateSession.mockResolvedValue({ id: 2, userId: 7 });
+		revokeSession.mockResolvedValue({ id: 2 });
+		revokeAllSessions.mockResolvedValue(2);
 	});
 
 	test('uses the same invalid-credentials response for missing, blocked, and mismatched users', async () => {
@@ -190,6 +198,29 @@ describe('auth service', () => {
 				code: 'UNAUTHORIZED',
 			});
 		expect(userRepository.findUserById).not.toHaveBeenCalled();
+	});
+
+	test('logs out only the matching refresh session', async () => {
+		token.hashRefreshToken.mockReturnValueOnce('current-refresh-hash');
+
+		await expect(logoutSession(7, 'current-refresh-token'))
+			.resolves.toBeUndefined();
+		expect(revokeSession).toHaveBeenCalledWith({
+			userId: 7,
+			refreshTokenHash: 'current-refresh-hash',
+		});
+
+		revokeSession.mockResolvedValueOnce(null);
+		await expect(logoutSession(7, 'different-refresh-token'))
+			.rejects.toMatchObject({
+				status: 401,
+				code: 'UNAUTHORIZED',
+			});
+	});
+
+	test('logs out all sessions for the authenticated user', async () => {
+		await expect(logoutAllSessions(7)).resolves.toBeUndefined();
+		expect(revokeAllSessions).toHaveBeenCalledWith(7);
 	});
 
 	test('keeps administrator audit behavior without exposing account state', async () => {

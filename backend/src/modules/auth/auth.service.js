@@ -15,6 +15,8 @@ const {
 const {
 	createSession,
 	rotateSession,
+	revokeSession,
+	revokeAllSessions,
 } = require('./auth-session.repository');
 const { toUserDto } = require('./auth.mapper');
 const {
@@ -90,6 +92,21 @@ async function refreshAuthTokens(refreshToken) {
 		...issueAccessToken(user, user.appVersion ?? undefined),
 		refreshToken: nextRefreshToken,
 	};
+}
+
+async function logoutSession(userId, refreshToken) {
+	const revokedSession = await revokeSession({
+		userId,
+		refreshTokenHash: hashRefreshToken(refreshToken),
+	});
+
+	if (!revokedSession) {
+		throw new ApiError(401, 'Invalid or expired refresh token');
+	}
+}
+
+async function logoutAllSessions(userId) {
+	await revokeAllSessions(userId);
 }
 
 async function loginUser({
@@ -181,5 +198,7 @@ module.exports = {
 	loginUser,
 	registerUser,
 	refreshAuthTokens,
+	logoutSession,
+	logoutAllSessions,
 	getCurrentUser,
 };

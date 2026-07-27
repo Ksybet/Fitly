@@ -1,6 +1,8 @@
 const express = require('express');
 const {
 	login,
+	logout,
+	logoutAll,
 	me,
 	refresh,
 	register,
@@ -17,6 +19,13 @@ const router = express.Router();
 router.post('/login', validateLoginRequest, login);
 router.post('/register', validateRegisterRequest, register);
 router.post('/refresh', validateRefreshTokenRequest, refresh);
+router.post(
+	'/logout',
+	authMiddleware,
+	validateRefreshTokenRequest,
+	logout,
+);
+router.post('/logout-all', authMiddleware, logoutAll);
 router.get('/me', authMiddleware, me);
 
 module.exports = router;

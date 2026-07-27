@@ -73,7 +73,37 @@ async function rotateSession({
 	}
 }
 
+async function revokeSession({ userId, refreshTokenHash }) {
+	const result = await pool.query(
+		`UPDATE auth_sessions
+		 SET revoked_at = CURRENT_TIMESTAMP
+		 WHERE user_id = $1
+		   AND refresh_token_hash = $2
+		   AND revoked_at IS NULL
+		   AND expires_at > CURRENT_TIMESTAMP
+		 RETURNING id`,
+		[userId, refreshTokenHash],
+	);
+
+	return result.rows[0] || null;
+}
+
+async function revokeAllSessions(userId) {
+	const result = await pool.query(
+		`UPDATE auth_sessions
+		 SET revoked_at = CURRENT_TIMESTAMP
+		 WHERE user_id = $1
+		   AND revoked_at IS NULL
+		   AND expires_at > CURRENT_TIMESTAMP`,
+		[userId],
+	);
+
+	return result.rowCount;
+}
+
 module.exports = {
 	createSession,
 	rotateSession,
+	revokeSession,
+	revokeAllSessions,
 };

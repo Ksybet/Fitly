@@ -2,9 +2,14 @@ const {
 	loginUser,
 	registerUser,
 	refreshAuthTokens,
+	logoutSession,
+	logoutAllSessions,
 	getCurrentUser,
 } = require('./auth.service');
-const { sendSuccess } = require('../../utils/http-response');
+const {
+	sendSuccess,
+	sendActionCompleted,
+} = require('../../utils/http-response');
 
 async function login(req, res, next) {
 	try {
@@ -46,6 +51,26 @@ async function refresh(req, res, next) {
 	}
 }
 
+async function logout(req, res, next) {
+	try {
+		await logoutSession(req.user.userId, req.body.refreshToken);
+
+		return sendActionCompleted(res);
+	} catch (error) {
+		next(error);
+	}
+}
+
+async function logoutAll(req, res, next) {
+	try {
+		await logoutAllSessions(req.user.userId);
+
+		return sendActionCompleted(res);
+	} catch (error) {
+		next(error);
+	}
+}
+
 async function me(req, res, next) {
 	try {
 		const user = await getCurrentUser(req.user.userId);
@@ -60,5 +85,7 @@ module.exports = {
 	login,
 	register,
 	refresh,
+	logout,
+	logoutAll,
 	me,
 };

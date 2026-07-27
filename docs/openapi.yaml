@@ -352,6 +352,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/ActionCompleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
