@@ -302,6 +302,23 @@ function validateMealId(req, res, next) {
 	return next();
 }
 
+function validateNutritionDate(req, res, next) {
+	const value = req.params.date;
+
+	if (!isValidDate(value)) {
+		return next(new ApiError(400, 'Request validation failed', {
+			details: [{
+				field: 'date',
+				code: 'INVALID_DATE',
+				message: 'date must be a valid date in YYYY-MM-DD format',
+			}],
+		}));
+	}
+
+	req.nutritionDate = value;
+	return next();
+}
+
 function validateAmount(value, field, details) {
 	if (
 		typeof value !== 'number'
@@ -527,6 +544,7 @@ module.exports = {
 	validateCreateProductRequest,
 	validateMealListQuery,
 	validateMealId,
+	validateNutritionDate,
 	validateMealRequest,
 	validatePaginationQuery,
 	validateNutritionValues,

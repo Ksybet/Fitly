@@ -215,6 +215,47 @@ describe('Nutrition PostgreSQL HTTP contracts', () => {
 		});
 
 		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-30')
+			.set('Authorization', token)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toMatchObject({
+					date: '2026-07-30',
+					totals: {
+						calories: 158,
+						proteinG: 4.45,
+						fatG: 1.9,
+						carbsG: 29,
+					},
+				});
+				expect(response.body.data.meals).toHaveLength(1);
+			});
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-29')
+			.set('Authorization', token)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({
+					date: '2026-07-29',
+					meals: [],
+					totals: {
+						calories: 0,
+						proteinG: 0,
+						fatG: 0,
+						carbsG: 0,
+					},
+				});
+			});
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-30')
+			.set('Authorization', authorization(otherUserId))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.meals).toEqual([]);
+				expect(response.body.data.totals.calories).toBe(0);
+			});
+
+		await request(app)
 			.get('/api/v1/nutrition/meals?from=2026-07-30&to=2026-07-30&mealType=breakfast')
 			.set('Authorization', token)
 			.expect(200)
@@ -285,6 +326,50 @@ describe('Nutrition PostgreSQL HTTP contracts', () => {
 				});
 			});
 
+		await request(app)
+			.patch('/api/v1/nutrition/meals/1')
+			.set('Authorization', token)
+			.send({
+				mealType: 'lunch',
+				eatenAt: '2026-07-30T21:30:00Z',
+				items: [{ productId: appleId, amountG: 200 }],
+			})
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toMatchObject({
+					date: '2026-07-31',
+					items: [{
+						productId: appleId,
+						name: 'Apple',
+						amountG: 200,
+						nutritionPer100g: { calories: 52 },
+						nutritionTotal: { calories: 104 },
+					}],
+					nutritionTotal: {
+						calories: 104,
+						proteinG: 0.6,
+						fatG: 0.4,
+						carbsG: 28,
+					},
+				});
+			});
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-30')
+			.set('Authorization', token)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.meals).toEqual([]);
+				expect(response.body.data.totals.calories).toBe(0);
+			});
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-31')
+			.set('Authorization', token)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.meals).toHaveLength(1);
+				expect(response.body.data.totals.calories).toBe(104);
+			});
+
 		for (const method of ['get', 'delete']) {
 			await request(app)[method]('/api/v1/nutrition/meals/1')
 				.set('Authorization', authorization(otherUserId))
@@ -317,11 +402,93 @@ describe('Nutrition PostgreSQL HTTP contracts', () => {
 			.get('/api/v1/nutrition/meals/1')
 			.set('Authorization', token)
 			.expect(404);
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-31')
+			.set('Authorization', token)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.meals).toEqual([]);
+				expect(response.body.data.totals.calories).toBe(0);
+			});
 
 		const itemCount = await pool.query(
 			'SELECT COUNT(*)::integer AS count FROM meal_items',
 		);
 		expect(itemCount.rows[0].count).toBe(0);
+	});
+
+	test('merges duplicate products and rounds only at API boundaries', async () => {
+		const userId = await createUser('nutrition-precision@example.com');
+		const appleId = await createSystemProduct('Apple');
+		const token = authorization(userId);
+		const response = await request(app)
+			.post('/api/v1/nutrition/meals')
+			.set('Authorization', token)
+			.send({
+				mealType: 'snack',
+				eatenAt: '2026-07-30T12:00:00Z',
+				items: [
+					{ productId: appleId, amountG: 40.1 },
+					{
+						name: 'Trace nutrient A',
+						amountG: 0.4,
+						nutritionPer100g: {
+							calories: 1,
+							proteinG: 1,
+							fatG: 1,
+							carbsG: 1,
+						},
+					},
+					{ productId: appleId, amountG: 59.9 },
+					{
+						name: 'Trace nutrient B',
+						amountG: 0.4,
+						nutritionPer100g: {
+							calories: 1,
+							proteinG: 1,
+							fatG: 1,
+							carbsG: 1,
+						},
+					},
+				],
+			})
+			.expect(201);
+
+		expect(response.body.data.items).toHaveLength(3);
+		expect(response.body.data.items[0]).toMatchObject({
+			productId: appleId,
+			amountG: 100,
+			nutritionTotal: { calories: 52 },
+		});
+		expect(response.body.data.items[1].nutritionTotal.calories).toBe(0);
+		expect(response.body.data.items[2].nutritionTotal.calories).toBe(0);
+		expect(response.body.data.nutritionTotal).toMatchObject({
+			calories: 52.01,
+			proteinG: 0.31,
+			fatG: 0.21,
+			carbsG: 14.01,
+		});
+
+		const stored = await pool.query(
+			`SELECT total_calories::text AS calories
+			 FROM meal_items
+			 WHERE meal_entry_id = $1
+			 ORDER BY id`,
+			[response.body.data.id],
+		);
+		expect(stored.rows.map(row => row.calories)).toEqual([
+			'52',
+			'0.004',
+			'0.004',
+		]);
+
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-30')
+			.set('Authorization', token)
+			.expect(200)
+			.expect(dailyResponse => {
+				expect(dailyResponse.body.data.totals.calories).toBe(52.01);
+			});
 	});
 
 	test('rejects inaccessible products without creating or replacing data', async () => {

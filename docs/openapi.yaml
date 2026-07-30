@@ -1702,6 +1702,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/NutritionDay'
+        '400':
+          $ref: '#/components/responses/ValidationError'
 
   /api/v1/workouts/catalog:
     get:
@@ -4973,6 +4975,31 @@ components:
           type: number
           format: float
           minimum: 0
+    RoundedNutritionValues:
+      type: object
+      description: Рассчитанные КБЖУ, округлённые до двух знаков после запятой.
+      required: [calories, proteinG, fatG, carbsG]
+      properties:
+        calories:
+          type: number
+          format: float
+          minimum: 0
+          multipleOf: 0.01
+        proteinG:
+          type: number
+          format: float
+          minimum: 0
+          multipleOf: 0.01
+        fatG:
+          type: number
+          format: float
+          minimum: 0
+          multipleOf: 0.01
+        carbsG:
+          type: number
+          format: float
+          minimum: 0
+          multipleOf: 0.01
     FoodProductRequest:
       type: object
       additionalProperties: false
@@ -5063,7 +5090,7 @@ components:
         nutritionPer100g:
           $ref: '#/components/schemas/NutritionValues'
         nutritionTotal:
-          $ref: '#/components/schemas/NutritionValues'
+          $ref: '#/components/schemas/RoundedNutritionValues'
     MealEntryRequest:
       type: object
       additionalProperties: false
@@ -5081,6 +5108,7 @@ components:
           type: array
           minItems: 1
           maxItems: 50
+          description: Повторяющиеся каталожные позиции с одинаковым `productId` объединяются суммированием `amountG`.
           items:
             $ref: '#/components/schemas/MealItemInput'
     MealEntry:
@@ -5106,7 +5134,7 @@ components:
           items:
             $ref: '#/components/schemas/MealItem'
         nutritionTotal:
-          $ref: '#/components/schemas/NutritionValues'
+          $ref: '#/components/schemas/RoundedNutritionValues'
         createdAt:
           type: string
           format: date-time
@@ -5125,7 +5153,7 @@ components:
           items:
             $ref: '#/components/schemas/MealEntry'
         totals:
-          $ref: '#/components/schemas/NutritionValues'
+          $ref: '#/components/schemas/RoundedNutritionValues'
 
     WorkoutType:
       type: string

@@ -5,6 +5,7 @@ jest.mock('../../src/modules/nutrition/nutrition.repository', () => ({
 	createMeal: jest.fn(),
 	listMeals: jest.fn(),
 	getMealById: jest.fn(),
+	getMealsForDate: jest.fn(),
 	updateMeal: jest.fn(),
 	deleteMeal: jest.fn(),
 }));
@@ -234,20 +235,20 @@ describe('nutrition meal service', () => {
 						productId: 1,
 						name: 'Apple',
 						nutritionTotal: {
-							calories: 78,
-							proteinG: 0.45,
-							fatG: 0.3,
-							carbsG: 21,
+							calories: '78',
+							proteinG: '0.45',
+							fatG: '0.3',
+							carbsG: '21',
 						},
 					}),
 					expect.objectContaining({
 						productId: null,
 						name: 'Yogurt',
 						nutritionTotal: {
-							calories: 80,
-							proteinG: 4,
-							fatG: 1.6,
-							carbsG: 8,
+							calories: '80',
+							proteinG: '4',
+							fatG: '1.6',
+							carbsG: '8',
 						},
 					}),
 				],
@@ -309,9 +310,7 @@ describe('nutrition meal service', () => {
 	});
 
 	test('fully replaces meal contents and clears an omitted title', async () => {
-		nutritionRepository.getAvailableProductsByIds.mockResolvedValueOnce([
-			productRow(),
-		]);
+		nutritionRepository.getMealById.mockResolvedValueOnce(mealRecord());
 		nutritionRepository.updateMeal.mockResolvedValueOnce(mealRecord({
 			entry: { mealType: 'lunch', title: null },
 		}));
@@ -333,5 +332,193 @@ describe('nutrition meal service', () => {
 			}),
 			'Europe/Moscow',
 		);
+		expect(nutritionRepository.getAvailableProductsByIds)
+			.not.toHaveBeenCalled();
+	});
+
+	test('merges duplicate catalog products in first-occurrence order', async () => {
+		nutritionRepository.getAvailableProductsByIds.mockResolvedValueOnce([
+			productRow(),
+			productRow({ id: 2, name: 'Banana' }),
+		]);
+		nutritionRepository.createMeal.mockResolvedValueOnce(mealRecord());
+
+		await nutritionService.createMeal(7, {
+			mealType: 'breakfast',
+			eatenAt: '2026-07-30T08:00:00Z',
+			title: null,
+			items: [
+				{ productId: 1, amountG: 100.1 },
+				{ productId: 2, amountG: 50 },
+				{ productId: 1, amountG: 49.9 },
+			],
+		});
+
+		const savedItems = nutritionRepository.createMeal.mock.calls[0][1].items;
+		expect(savedItems).toHaveLength(2);
+		expect(savedItems.map(item => item.productId)).toEqual([1, 2]);
+		expect(savedItems[0]).toMatchObject({
+			amountG: 150,
+			nutritionTotal: { calories: '78' },
+		});
+	});
+
+	test('rejects duplicate products whose combined amount exceeds the limit', async () => {
+		await expect(nutritionService.createMeal(7, {
+			mealType: 'breakfast',
+			eatenAt: '2026-07-30T08:00:00Z',
+			title: null,
+			items: [
+				{ productId: 1, amountG: 6000 },
+				{ productId: 1, amountG: 4000.1 },
+			],
+		})).rejects.toMatchObject({
+			status: 400,
+			details: [{
+				field: 'items[1].amountG',
+				code: 'OUT_OF_RANGE',
+			}],
+		});
+		expect(nutritionRepository.getAvailableProductsByIds)
+			.not.toHaveBeenCalled();
+	});
+
+	test('keeps the stored catalog snapshot when only amount changes', async () => {
+		nutritionRepository.getMealById.mockResolvedValueOnce(mealRecord());
+		nutritionRepository.updateMeal.mockResolvedValueOnce(mealRecord());
+
+		await nutritionService.updateMeal(7, 4, {
+			mealType: 'breakfast',
+			eatenAt: '2026-07-29T21:30:00Z',
+			title: 'Breakfast',
+			items: [{ productId: 1, amountG: 200 }],
+		});
+
+		const savedItem = nutritionRepository.updateMeal.mock.calls[0][2].items[0];
+		expect(savedItem).toMatchObject({
+			productId: 1,
+			name: 'Apple',
+			amountG: 200,
+			nutritionPer100g: {
+				calories: '52',
+				proteinG: '0.3',
+				fatG: '0.2',
+				carbsG: '14',
+			},
+			nutritionTotal: {
+				calories: '104',
+				proteinG: '0.6',
+				fatG: '0.4',
+				carbsG: '28',
+			},
+		});
+		expect(nutritionRepository.getAvailableProductsByIds)
+			.not.toHaveBeenCalled();
+	});
+
+	test('loads a fresh snapshot when a catalog product is replaced', async () => {
+		nutritionRepository.getMealById.mockResolvedValueOnce(mealRecord());
+		nutritionRepository.getAvailableProductsByIds.mockResolvedValueOnce([
+			productRow({
+				id: 2,
+				name: 'Banana',
+				calories: '89',
+				proteinG: '1.1',
+				fatG: '0.3',
+				carbsG: '23',
+			}),
+		]);
+		nutritionRepository.updateMeal.mockResolvedValueOnce(mealRecord());
+
+		await nutritionService.updateMeal(7, 4, {
+			mealType: 'breakfast',
+			eatenAt: '2026-07-29T21:30:00Z',
+			title: null,
+			items: [{ productId: 2, amountG: 100 }],
+		});
+
+		expect(nutritionRepository.getAvailableProductsByIds)
+			.toHaveBeenCalledWith(7, [2]);
+		expect(nutritionRepository.updateMeal.mock.calls[0][2].items[0])
+			.toMatchObject({
+				productId: 2,
+				name: 'Banana',
+				nutritionTotal: {
+					calories: '89',
+					proteinG: '1.1',
+					fatG: '0.3',
+					carbsG: '23',
+				},
+			});
+	});
+
+	test('checks ownership before resolving replacement products', async () => {
+		nutritionRepository.getMealById.mockResolvedValueOnce(null);
+
+		await expect(nutritionService.updateMeal(7, 99, {
+			mealType: 'dinner',
+			eatenAt: '2026-07-30T18:00:00Z',
+			title: null,
+			items: [{ productId: 99, amountG: 100 }],
+		})).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+		expect(nutritionRepository.getAvailableProductsByIds)
+			.not.toHaveBeenCalled();
+		expect(nutritionRepository.updateMeal).not.toHaveBeenCalled();
+	});
+
+	test('returns zero and exact accumulated daily nutrition', async () => {
+		nutritionRepository.getMealsForDate.mockResolvedValueOnce([]);
+
+		await expect(nutritionService.getNutritionDay(7, '2026-07-30'))
+			.resolves.toEqual({
+				date: '2026-07-30',
+				meals: [],
+				totals: {
+					calories: 0,
+					proteinG: 0,
+					fatG: 0,
+					carbsG: 0,
+				},
+			});
+
+		const preciseRecord = mealRecord({
+			items: [
+				{
+					...mealRecord().items[0],
+					totalCalories: '0.004',
+					totalProteinG: '0.004',
+					totalFatG: '0.004',
+					totalCarbsG: '0.004',
+				},
+				{
+					...mealRecord().items[0],
+					id: 11,
+					totalCalories: '0.004',
+					totalProteinG: '0.004',
+					totalFatG: '0.004',
+					totalCarbsG: '0.004',
+				},
+			],
+		});
+		nutritionRepository.getMealsForDate.mockResolvedValueOnce([preciseRecord]);
+
+		await expect(nutritionService.getNutritionDay(7, '2026-07-30'))
+			.resolves.toMatchObject({
+				meals: [{
+					items: [
+						{ nutritionTotal: { calories: 0 } },
+						{ nutritionTotal: { calories: 0 } },
+					],
+					nutritionTotal: { calories: 0.01 },
+				}],
+				totals: {
+					calories: 0.01,
+					proteinG: 0.01,
+					fatG: 0.01,
+					carbsG: 0.01,
+				},
+			});
+		expect(nutritionRepository.getMealsForDate)
+			.toHaveBeenLastCalledWith(7, '2026-07-30', 'Europe/Moscow');
 	});
 });

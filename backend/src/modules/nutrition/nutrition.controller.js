@@ -96,6 +96,19 @@ async function deleteMeal(req, res, next) {
 	}
 }
 
+async function getNutritionDay(req, res, next) {
+	try {
+		const day = await nutritionService.getNutritionDay(
+			currentUserId(req),
+			req.nutritionDate,
+		);
+
+		return sendSuccess(res, day);
+	} catch (error) {
+		return next(error);
+	}
+}
+
 module.exports = {
 	searchProducts,
 	createCustomProduct,
@@ -105,4 +118,5 @@ module.exports = {
 	getMeal,
 	updateMeal,
 	deleteMeal,
+	getNutritionDay,
 };
