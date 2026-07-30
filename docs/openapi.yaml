@@ -1484,6 +1484,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Nutrition]
       operationId: createCustomFoodProduct
@@ -1584,6 +1586,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/MealEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Nutrition]
       operationId: createMeal
@@ -1618,6 +1622,7 @@ paths:
       tags: [Nutrition]
       operationId: getMeal
       summary: Получить приём пищи
+      x-requirements: [FR-601, FR-602, FITLY-038, FITLY-039]
       responses:
         '200':
           description: Приём пищи
@@ -1631,12 +1636,15 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/MealEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
     patch:
       tags: [Nutrition]
       operationId: updateMeal
       summary: Изменить приём пищи и пересчитать КБЖУ
+      x-requirements: [FR-601, FR-602, FITLY-038, FITLY-039]
       requestBody:
         required: true
         content:
@@ -1664,9 +1672,12 @@ paths:
       tags: [Nutrition]
       operationId: deleteMeal
       summary: Удалить приём пищи и пересчитать итог дня
+      x-requirements: [FR-601, FR-602, FITLY-038, FITLY-039]
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
 
