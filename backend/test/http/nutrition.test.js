@@ -377,11 +377,45 @@ describe('Nutrition meal HTTP contracts', () => {
 			});
 	});
 
+	test('returns a daily nutrition summary', async () => {
+		jest.spyOn(nutritionService, 'getNutritionDay').mockResolvedValueOnce({
+			date: '2026-07-30',
+			meals: [mealDto()],
+			totals: {
+				calories: 78,
+				proteinG: 0.45,
+				fatG: 0.3,
+				carbsG: 21,
+			},
+		});
+
+		await request(app)
+			.get('/api/v1/nutrition/daily/2026-07-30')
+			.set('Authorization', authorization())
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({
+					date: '2026-07-30',
+					meals: [mealDto()],
+					totals: {
+						calories: 78,
+						proteinG: 0.45,
+						fatG: 0.3,
+						carbsG: 21,
+					},
+				});
+				expect(response.body.meta.requestId).toMatch(requestIdPattern);
+			});
+		expect(nutritionService.getNutritionDay)
+			.toHaveBeenCalledWith(1, '2026-07-30');
+	});
+
 	test.each([
 		['/api/v1/nutrition/meals?from=2026-02-30', 'from', 'INVALID_DATE'],
 		['/api/v1/nutrition/meals?from=2026-08-01&to=2026-07-30', 'to', 'INVALID_RANGE'],
 		['/api/v1/nutrition/meals?mealType=brunch', 'mealType', 'INVALID_ENUM'],
 		['/api/v1/nutrition/meals/not-an-id', 'mealId', 'OUT_OF_RANGE'],
+		['/api/v1/nutrition/daily/2026-02-30', 'date', 'INVALID_DATE'],
 	])('rejects an invalid meal query or path %s', async (url, field, code) => {
 		await request(app)
 			.get(url)
@@ -431,6 +465,15 @@ describe('Nutrition meal HTTP contracts', () => {
 				},
 			}],
 		}, 'items[0].nutritionPer100g.carbsG', 'REQUIRED'],
+		[{
+			...validBody,
+			nutritionTotal: {
+				calories: 1,
+				proteinG: 1,
+				fatG: 1,
+				carbsG: 1,
+			},
+		}, 'nutritionTotal', 'UNKNOWN_FIELD'],
 	])('rejects an invalid MealEntryRequest', async (body, field, code) => {
 		await request(app)
 			.post('/api/v1/nutrition/meals')
@@ -451,6 +494,7 @@ describe('Nutrition meal HTTP contracts', () => {
 		['get', '/api/v1/nutrition/meals/1'],
 		['patch', '/api/v1/nutrition/meals/1'],
 		['delete', '/api/v1/nutrition/meals/1'],
+		['get', '/api/v1/nutrition/daily/2026-07-30'],
 	])('%s %s requires authentication', async (method, url) => {
 		await request(app)[method](url)
 			.send(validBody)

@@ -6,6 +6,7 @@ const {
 	validateCreateProductRequest,
 	validateMealListQuery,
 	validateMealId,
+	validateNutritionDate,
 	validateMealRequest,
 } = require('./nutrition.validators');
 
@@ -53,6 +54,12 @@ router.delete(
 	authMiddleware,
 	validateMealId,
 	nutritionController.deleteMeal,
+);
+router.get(
+	'/daily/:date',
+	authMiddleware,
+	validateNutritionDate,
+	nutritionController.getNutritionDay,
 );
 
 module.exports = router;

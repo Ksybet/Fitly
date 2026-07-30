@@ -307,6 +307,40 @@ async function getMealById(userId, mealId, timezone) {
 	return getMealRecord(pool, userId, mealId, timezone);
 }
 
+async function getMealsForDate(userId, date, timezone) {
+	const entriesResult = await pool.query(
+		`SELECT ${mealEntryColumns}
+		 FROM meal_entries
+		 WHERE user_id = $1
+		   AND eaten_at >= ($3::date::timestamp AT TIME ZONE $2)
+		   AND eaten_at < (
+				($3::date + 1)::timestamp AT TIME ZONE $2
+		   )
+		 ORDER BY eaten_at ASC, id ASC`,
+		[userId, timezone, date],
+	);
+	const entryIds = entriesResult.rows.map(entry => entry.id);
+	let items = [];
+
+	if (entryIds.length > 0) {
+		const itemsResult = await pool.query(
+			`SELECT ${mealItemColumns}
+			 FROM meal_items
+			 WHERE meal_entry_id = ANY($1::integer[])
+			 ORDER BY meal_entry_id ASC, id ASC`,
+			[entryIds],
+		);
+		items = itemsResult.rows;
+	}
+
+	return entriesResult.rows.map(entry => ({
+		entry,
+		items: items.filter(
+			item => Number(item.mealEntryId) === Number(entry.id),
+		),
+	}));
+}
+
 async function updateMeal(userId, mealId, meal, timezone) {
 	const client = await pool.connect();
 
@@ -364,6 +398,7 @@ module.exports = {
 	createMeal,
 	listMeals,
 	getMealById,
+	getMealsForDate,
 	updateMeal,
 	deleteMeal,
 };

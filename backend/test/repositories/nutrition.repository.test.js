@@ -87,3 +87,72 @@ describe('nutrition repository transactions', () => {
 		expect(client.release).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('nutrition repository daily queries', () => {
+	beforeEach(() => jest.clearAllMocks());
+
+	test('loads only entries inside the user local day', async () => {
+		pool.query
+			.mockResolvedValueOnce({
+				rows: [{
+					id: 4,
+					mealType: 'breakfast',
+					eatenAt: new Date('2026-07-29T21:30:00.000Z'),
+					date: '2026-07-30',
+					title: null,
+					createdAt: new Date('2026-07-29T21:30:00.000Z'),
+					updatedAt: new Date('2026-07-29T21:30:00.000Z'),
+				}],
+			})
+			.mockResolvedValueOnce({
+				rows: [{
+					id: 9,
+					mealEntryId: 4,
+					productId: null,
+					name: 'Meal',
+					amountG: '100',
+					per100gCalories: '10',
+					per100gProteinG: '1',
+					per100gFatG: '1',
+					per100gCarbsG: '1',
+					totalCalories: '10',
+					totalProteinG: '1',
+					totalFatG: '1',
+					totalCarbsG: '1',
+				}],
+			});
+
+		await expect(nutritionRepository.getMealsForDate(
+			7,
+			'2026-07-30',
+			'Europe/Moscow',
+		)).resolves.toEqual([{
+			entry: expect.objectContaining({ id: 4, date: '2026-07-30' }),
+			items: [expect.objectContaining({ id: 9, mealEntryId: 4 })],
+		}]);
+
+		expect(pool.query.mock.calls[0][0]).toContain(
+			'eaten_at >= ($3::date::timestamp AT TIME ZONE $2)',
+		);
+		expect(pool.query.mock.calls[0][0]).toContain(
+			'($3::date + 1)::timestamp AT TIME ZONE $2',
+		);
+		expect(pool.query.mock.calls[0][1]).toEqual([
+			7,
+			'Europe/Moscow',
+			'2026-07-30',
+		]);
+		expect(pool.query.mock.calls[1][1]).toEqual([[4]]);
+	});
+
+	test('does not query meal items when the day is empty', async () => {
+		pool.query.mockResolvedValueOnce({ rows: [] });
+
+		await expect(nutritionRepository.getMealsForDate(
+			7,
+			'2026-07-30',
+			'UTC',
+		)).resolves.toEqual([]);
+		expect(pool.query).toHaveBeenCalledTimes(1);
+	});
+});
