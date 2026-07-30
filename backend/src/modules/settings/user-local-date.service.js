@@ -19,11 +19,16 @@ function getDateInTimeZone(timezone, now = new Date(Date.now())) {
 }
 
 async function getUserLocalDate(userId, now) {
-	const timezone = await settingsRepository.getTimezoneByUserId(userId);
+	const timezone = await getUserTimezone(userId);
 	return getDateInTimeZone(timezone, now);
+}
+
+async function getUserTimezone(userId) {
+	return settingsRepository.getTimezoneByUserId(userId);
 }
 
 module.exports = {
 	getDateInTimeZone,
 	getUserLocalDate,
+	getUserTimezone,
 };

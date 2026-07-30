@@ -2,11 +2,20 @@ const { ApiError } = require('../../utils/api-error');
 const {
 	addDetail,
 	validateObjectBody,
+	isRfc3339DateTime,
 } = require('../../utils/request-validation');
 
 const PRODUCT_FIELDS = new Set(['name', 'nutritionPer100g', 'isActive']);
 const NUTRITION_FIELDS = new Set(['calories', 'proteinG', 'fatG', 'carbsG']);
 const PRODUCT_SCOPES = new Set(['all', 'system', 'custom']);
+const MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack']);
+const MEAL_FIELDS = new Set(['mealType', 'eatenAt', 'title', 'items']);
+const CATALOG_ITEM_FIELDS = new Set(['productId', 'amountG']);
+const MANUAL_ITEM_FIELDS = new Set([
+	'name',
+	'amountG',
+	'nutritionPer100g',
+]);
 
 function isPlainObject(value) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -197,9 +206,328 @@ function validateCreateProductRequest(req, res, next) {
 	return next();
 }
 
+function isValidDate(value) {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+		return false;
+	}
+
+	const [year, month, day] = value.split('-').map(Number);
+	const date = new Date(Date.UTC(year, month - 1, day));
+
+	return date.getUTCFullYear() === year
+		&& date.getUTCMonth() === month - 1
+		&& date.getUTCDate() === day;
+}
+
+function validateMealListQuery(req, res, next) {
+	const details = [];
+	const pagination = validatePaginationQuery(
+		req.query,
+		new Set(['from', 'to', 'mealType', 'page', 'pageSize']),
+		details,
+	);
+	let from;
+	let to;
+	let mealType;
+
+	for (const field of ['from', 'to']) {
+		if (req.query[field] !== undefined) {
+			if (!isValidDate(req.query[field])) {
+				addDetail(
+					details,
+					field,
+					'INVALID_DATE',
+					`${field} must be a valid date in YYYY-MM-DD format`,
+				);
+			} else if (field === 'from') {
+				from = req.query[field];
+			} else {
+				to = req.query[field];
+			}
+		}
+	}
+
+	if (from && to && from > to) {
+		addDetail(
+			details,
+			'to',
+			'INVALID_RANGE',
+			'to must be greater than or equal to from',
+		);
+	}
+
+	if (req.query.mealType !== undefined) {
+		if (
+			typeof req.query.mealType !== 'string'
+			|| !MEAL_TYPES.has(req.query.mealType)
+		) {
+			addDetail(
+				details,
+				'mealType',
+				'INVALID_ENUM',
+				'mealType has an unsupported value',
+			);
+		} else {
+			mealType = req.query.mealType;
+		}
+	}
+
+	if (details.length > 0) {
+		return next(new ApiError(400, 'Request validation failed', { details }));
+	}
+
+	req.nutritionQuery = {
+		...pagination,
+		from,
+		to,
+		mealType,
+	};
+	return next();
+}
+
+function validateMealId(req, res, next) {
+	const value = req.params.mealId;
+
+	if (!/^[1-9]\d*$/.test(value) || Number(value) > 2147483647) {
+		return next(new ApiError(400, 'Request validation failed', {
+			details: [{
+				field: 'mealId',
+				code: 'OUT_OF_RANGE',
+				message: 'mealId must be a positive integer',
+			}],
+		}));
+	}
+
+	req.mealId = Number(value);
+	return next();
+}
+
+function validateAmount(value, field, details) {
+	if (
+		typeof value !== 'number'
+		|| !Number.isFinite(value)
+		|| value < 0.1
+		|| value > 10000
+	) {
+		addDetail(
+			details,
+			field,
+			'OUT_OF_RANGE',
+			`${field} must be a number between 0.1 and 10000`,
+		);
+	}
+}
+
+function validateMealItem(item, index, details) {
+	const path = `items[${index}]`;
+
+	if (!isPlainObject(item)) {
+		addDetail(details, path, 'INVALID_TYPE', 'Meal item must be an object');
+		return null;
+	}
+
+	const hasProductId = Object.prototype.hasOwnProperty.call(item, 'productId');
+	const hasManualData =
+		Object.prototype.hasOwnProperty.call(item, 'name')
+		|| Object.prototype.hasOwnProperty.call(item, 'nutritionPer100g');
+
+	if (hasProductId === hasManualData) {
+		addDetail(
+			details,
+			path,
+			'ONE_OF',
+			'Meal item must be either a catalog or manual item',
+		);
+		return null;
+	}
+
+	const allowedFields = hasProductId
+		? CATALOG_ITEM_FIELDS
+		: MANUAL_ITEM_FIELDS;
+	const requiredFields = hasProductId
+		? ['productId', 'amountG']
+		: ['name', 'amountG', 'nutritionPer100g'];
+
+	for (const field of Object.keys(item)) {
+		if (!allowedFields.has(field)) {
+			addDetail(
+				details,
+				`${path}.${field}`,
+				'UNKNOWN_FIELD',
+				`${field} is not allowed`,
+			);
+		}
+	}
+
+	for (const field of requiredFields) {
+		if (!Object.prototype.hasOwnProperty.call(item, field)) {
+			addDetail(
+				details,
+				`${path}.${field}`,
+				'REQUIRED',
+				`${field} is required`,
+			);
+		}
+	}
+
+	if (Object.prototype.hasOwnProperty.call(item, 'amountG')) {
+		validateAmount(item.amountG, `${path}.amountG`, details);
+	}
+
+	if (hasProductId) {
+		if (
+			!Number.isInteger(item.productId)
+			|| item.productId < 1
+			|| item.productId > 2147483647
+		) {
+			addDetail(
+				details,
+				`${path}.productId`,
+				'OUT_OF_RANGE',
+				'productId must be a positive integer',
+			);
+		}
+
+		return {
+			productId: item.productId,
+			amountG: item.amountG,
+		};
+	}
+
+	let name;
+
+	if (Object.prototype.hasOwnProperty.call(item, 'name')) {
+		if (typeof item.name !== 'string') {
+			addDetail(
+				details,
+				`${path}.name`,
+				'INVALID_TYPE',
+				'name must be a string',
+			);
+		} else {
+			name = item.name.trim();
+			const length = Array.from(name).length;
+
+			if (length < 1 || length > 200) {
+				addDetail(
+					details,
+					`${path}.name`,
+					'INVALID_LENGTH',
+					'name must contain between 1 and 200 characters',
+				);
+			}
+		}
+	}
+
+	if (Object.prototype.hasOwnProperty.call(item, 'nutritionPer100g')) {
+		validateNutritionValues(
+			item.nutritionPer100g,
+			`${path}.nutritionPer100g`,
+			details,
+		);
+	}
+
+	return {
+		name,
+		amountG: item.amountG,
+		nutritionPer100g: item.nutritionPer100g,
+	};
+}
+
+function validateMealRequest(req, res, next) {
+	const details = [];
+	const body = req.body;
+	let items = [];
+
+	if (validateObjectBody(body, {
+		allowedFields: MEAL_FIELDS,
+		requiredFields: ['mealType', 'eatenAt', 'items'],
+	}, details)) {
+		if (
+			Object.prototype.hasOwnProperty.call(body, 'mealType')
+			&& (
+				typeof body.mealType !== 'string'
+				|| !MEAL_TYPES.has(body.mealType)
+			)
+		) {
+			addDetail(
+				details,
+				'mealType',
+				'INVALID_ENUM',
+				'mealType has an unsupported value',
+			);
+		}
+
+		if (
+			Object.prototype.hasOwnProperty.call(body, 'eatenAt')
+			&& !isRfc3339DateTime(body.eatenAt)
+		) {
+			addDetail(
+				details,
+				'eatenAt',
+				'INVALID_DATE_TIME',
+				'eatenAt must be a valid RFC 3339 date-time',
+			);
+		}
+
+		if (Object.prototype.hasOwnProperty.call(body, 'title')) {
+			if (
+				typeof body.title !== 'string'
+				|| Array.from(body.title).length > 200
+			) {
+				addDetail(
+					details,
+					'title',
+					'INVALID_LENGTH',
+					'title must be a string with at most 200 characters',
+				);
+			}
+		}
+
+		if (Object.prototype.hasOwnProperty.call(body, 'items')) {
+			if (!Array.isArray(body.items)) {
+				addDetail(
+					details,
+					'items',
+					'INVALID_TYPE',
+					'items must be an array',
+				);
+			} else {
+				if (body.items.length < 1 || body.items.length > 50) {
+					addDetail(
+						details,
+						'items',
+						'INVALID_LENGTH',
+						'items must contain between 1 and 50 elements',
+					);
+				}
+
+				items = body.items.map(
+					(item, index) => validateMealItem(item, index, details),
+				);
+			}
+		}
+	}
+
+	if (details.length > 0) {
+		return next(new ApiError(400, 'Request validation failed', { details }));
+	}
+
+	req.nutritionBody = {
+		mealType: body.mealType,
+		eatenAt: body.eatenAt,
+		title: body.title === undefined ? null : body.title.trim(),
+		items,
+	};
+	return next();
+}
+
 module.exports = {
 	validateProductSearchQuery,
 	validateCreateProductRequest,
+	validateMealListQuery,
+	validateMealId,
+	validateMealRequest,
 	validatePaginationQuery,
 	validateNutritionValues,
 };

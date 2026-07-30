@@ -56,7 +56,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(11);
+		expect(cascadeResult.rows[0].count).toBe(13);
 	});
 
 	test('restricts user roles and case-insensitive email uniqueness', async () => {
