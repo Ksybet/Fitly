@@ -6,8 +6,11 @@ const { pool, closeDatabase } = require('../../src/config/db');
 const appTables = [
 	'admin_login_attempts',
 	'auth_sessions',
+	'exercises',
 	'user_settings',
 	'weight_entries',
+	'workout_exercises',
+	'workouts',
 	'favorites',
 	'daily_tracking',
 	'mood_entries',
@@ -17,6 +20,10 @@ const appTables = [
 	'profiles',
 	'users',
 ];
+
+const userDataTables = appTables.filter(table => (
+	!['exercises', 'workout_exercises', 'workouts'].includes(table)
+));
 
 function expectTestDatabase(databaseName) {
 	if (!databaseName.endsWith('_test')) {
@@ -31,7 +38,9 @@ describe('PostgreSQL schema and administrator audit', () => {
 	});
 
 	beforeEach(async () => {
-		await pool.query(`TRUNCATE TABLE ${appTables.join(', ')} RESTART IDENTITY CASCADE`);
+		await pool.query(
+			`TRUNCATE TABLE ${userDataTables.join(', ')} RESTART IDENTITY CASCADE`,
+		);
 	});
 
 	afterAll(async () => {
@@ -56,7 +65,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(13);
+		expect(cascadeResult.rows[0].count).toBe(14);
 	});
 
 	test('restricts user roles and case-insensitive email uniqueness', async () => {

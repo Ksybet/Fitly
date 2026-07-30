@@ -165,3 +165,77 @@ export type DailyTrackingRequest = Partial<
 export type ActionResult = {
 	completed: true;
 };
+
+export type WorkoutType = 'cardio' | 'strength' | 'stretching' | 'yoga';
+
+export type BodyArea =
+	| 'abs'
+	| 'legs'
+	| 'back'
+	| 'arms'
+	| 'glutes'
+	| 'full_body';
+
+export type Intensity = 'low' | 'medium' | 'high';
+
+export type WorkoutSummary = {
+	id: number;
+	title: string;
+	description?: string;
+	type: WorkoutType;
+	bodyArea: BodyArea;
+	intensity: Intensity;
+	durationMinutes: number;
+	estimatedCalories: number;
+	imageUrl?: string | null;
+	isActive: boolean;
+};
+
+export type MediaResource = {
+	type: 'image' | 'video';
+	url: string;
+	title?: string;
+};
+
+export type Exercise = {
+	id: number;
+	title: string;
+	description: string;
+	type: WorkoutType;
+	bodyArea: BodyArea;
+	intensity: Intensity;
+	instructions: string[];
+	media?: MediaResource[];
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type WorkoutExercise = {
+	exerciseId: number;
+	order: number;
+	sets?: number;
+	repetitions?: number;
+	durationSeconds?: number;
+	restSeconds?: number;
+	exercise: Exercise;
+};
+
+export type Workout = WorkoutSummary & {
+	exercises: WorkoutExercise[];
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type PaginationMeta = ResponseMeta & {
+	page: number;
+	pageSize: number;
+	total: number;
+	totalPages: number;
+};
+
+export type PaginatedEnvelope<T> = {
+	success: true;
+	data: T[];
+	meta: PaginationMeta;
+};

@@ -1,51 +1,182 @@
-import React, { useContext, useState } from 'react';
+import React, {
+	useContext,
+	useEffect,
+	useRef,
+	useState,
+} from 'react';
 import {
-	View,
-	Text,
-	StyleSheet,
-	TouchableOpacity,
+	ActivityIndicator,
 	ScrollView,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ThemeContext } from '../src/context/ThemeContext';
 import BottomNav from '../src/components/BottomNav';
+import { ThemeContext } from '../src/context/ThemeContext';
+import { normalizeApiError, withRequestId } from '../src/api/api-error';
+import type {
+	BodyArea,
+	Intensity,
+	PaginationMeta,
+	WorkoutSummary,
+	WorkoutType,
+} from '../src/api/contracts';
+import { getWorkoutCatalog } from '../src/api/workouts.api';
 
-type WorkoutType = 'cardio' | 'strength' | 'stretching';
-type BodyZone = 'press' | 'arms' | 'glutes' | 'legs' | 'back' | 'full_body';
-
-const WORKOUT_TYPES: {
+type WorkoutTypeOption = {
 	key: WorkoutType;
 	label: string;
 	icon: keyof typeof MaterialCommunityIcons.glyphMap;
-	disabled?: boolean;
-}[] = [
-	{ key: 'cardio', label: 'Кардио', icon: 'heart', disabled: true },
-	{ key: 'strength', label: 'Силовая', icon: 'dumbbell' },
-	{ key: 'stretching', label: 'Растяжка', icon: 'yoga', disabled: true },
-];
+};
 
-const BODY_ZONES: {
-	key: BodyZone;
+type BodyAreaOption = {
+	key: BodyArea;
 	label: string;
 	icon: keyof typeof MaterialCommunityIcons.glyphMap;
-	disabled?: boolean;
-}[] = [
-	{ key: 'press', label: 'Пресс', icon: 'human', disabled: true },
-	{ key: 'arms', label: 'Руки', icon: 'arm-flex-outline' },
-	{ key: 'glutes', label: 'Ягодицы', icon: 'human-female', disabled: true },
-	{ key: 'legs', label: 'Ноги', icon: 'shoe-print', disabled: true },
-	{ key: 'back', label: 'Спина', icon: 'human-male-height', disabled: true },
-	{ key: 'full_body', label: 'Все тело', icon: 'human-male', disabled: true },
+};
+
+const WORKOUT_TYPES: WorkoutTypeOption[] = [
+	{ key: 'cardio', label: 'Кардио', icon: 'heart' },
+	{ key: 'strength', label: 'Силовая', icon: 'dumbbell' },
+	{ key: 'stretching', label: 'Растяжка', icon: 'yoga' },
+	{ key: 'yoga', label: 'Йога', icon: 'meditation' },
 ];
 
-export default function IndividualWorkoutScreen() {
+const BODY_AREAS: BodyAreaOption[] = [
+	{ key: 'abs', label: 'Пресс', icon: 'human' },
+	{ key: 'arms', label: 'Руки', icon: 'arm-flex-outline' },
+	{ key: 'glutes', label: 'Ягодицы', icon: 'human-female' },
+	{ key: 'legs', label: 'Ноги', icon: 'shoe-print' },
+	{ key: 'back', label: 'Спина', icon: 'human-male-height' },
+	{ key: 'full_body', label: 'Все тело', icon: 'human-male' },
+];
+
+const WORKOUT_ICONS: Record<
+	WorkoutType,
+	keyof typeof MaterialCommunityIcons.glyphMap
+> = {
+	cardio: 'heart',
+	strength: 'dumbbell',
+	stretching: 'yoga',
+	yoga: 'meditation',
+};
+
+const INTENSITY_LABELS: Record<Intensity, string> = {
+	low: 'Низкая',
+	medium: 'Средняя',
+	high: 'Высокая',
+};
+
+function mergeWorkoutPages(
+	current: WorkoutSummary[],
+	incoming: WorkoutSummary[],
+) {
+	const merged = new Map(current.map(workout => [workout.id, workout]));
+
+	for (const workout of incoming) {
+		merged.set(workout.id, workout);
+	}
+
+	return [...merged.values()];
+}
+
+export default function WorkoutCatalogScreen() {
 	const insets = useSafeAreaInsets();
 	const { colors, isDark } = useContext(ThemeContext);
+	const [selectedType, setSelectedType] = useState<WorkoutType>();
+	const [selectedBodyArea, setSelectedBodyArea] = useState<BodyArea>();
+	const [workouts, setWorkouts] = useState<WorkoutSummary[]>([]);
+	const [meta, setMeta] = useState<PaginationMeta>();
+	const [page, setPage] = useState(1);
+	const [retryVersion, setRetryVersion] = useState(0);
+	const [isLoading, setIsLoading] = useState(true);
+	const [isLoadingMore, setIsLoadingMore] = useState(false);
+	const [errorMessage, setErrorMessage] = useState<string>();
+	const requestSequence = useRef(0);
 
-	const [selectedType] = useState<WorkoutType>('strength');
-	const [selectedZone] = useState<BodyZone>('arms');
+	useEffect(() => {
+		const sequence = ++requestSequence.current;
+		const appending = page > 1;
+
+		if (appending) {
+			setIsLoadingMore(true);
+		} else {
+			setIsLoading(true);
+		}
+		setErrorMessage(undefined);
+
+		getWorkoutCatalog({
+			type: selectedType,
+			bodyArea: selectedBodyArea,
+			page,
+			pageSize: 20,
+		})
+			.then(result => {
+				if (requestSequence.current !== sequence) return;
+
+				setWorkouts(current => (
+					appending
+						? mergeWorkoutPages(current, result.items)
+						: result.items
+				));
+				setMeta(result.meta);
+			})
+			.catch(error => {
+				if (requestSequence.current !== sequence) return;
+
+				const apiError = normalizeApiError(error);
+				setErrorMessage(withRequestId(
+					'Не удалось загрузить каталог тренировок.',
+					apiError.requestId,
+				));
+			})
+			.finally(() => {
+				if (requestSequence.current !== sequence) return;
+
+				setIsLoading(false);
+				setIsLoadingMore(false);
+			});
+
+		return () => {
+			if (requestSequence.current === sequence) {
+				requestSequence.current += 1;
+			}
+		};
+	}, [
+		page,
+		retryVersion,
+		selectedBodyArea,
+		selectedType,
+	]);
+
+	function resetCatalog() {
+		setPage(1);
+		setMeta(undefined);
+		setWorkouts([]);
+		setErrorMessage(undefined);
+	}
+
+	function toggleType(type: WorkoutType) {
+		resetCatalog();
+		setSelectedType(current => current === type ? undefined : type);
+	}
+
+	function toggleBodyArea(bodyArea: BodyArea) {
+		resetCatalog();
+		setSelectedBodyArea(current => (
+			current === bodyArea ? undefined : bodyArea
+		));
+	}
+
+	function retry() {
+		setRetryVersion(current => current + 1);
+	}
+
+	const hasMore = meta !== undefined && page < meta.totalPages;
 
 	return (
 		<View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -64,6 +195,8 @@ export default function IndividualWorkoutScreen() {
 						style={styles.backButton}
 						activeOpacity={0.8}
 						onPress={() => router.back()}
+						accessibilityRole='button'
+						accessibilityLabel='Назад'
 					>
 						<Ionicons name='chevron-back' size={24} color={colors.text} />
 					</TouchableOpacity>
@@ -84,7 +217,6 @@ export default function IndividualWorkoutScreen() {
 				<View style={[styles.typeTabs, { backgroundColor: colors.track }]}>
 					{WORKOUT_TYPES.map(item => {
 						const active = selectedType === item.key;
-						const disabled = item.disabled;
 
 						return (
 							<TouchableOpacity
@@ -92,33 +224,23 @@ export default function IndividualWorkoutScreen() {
 								style={[
 									styles.typeTab,
 									active && { backgroundColor: colors.primary },
-									disabled && styles.disabledItem,
 								]}
-								activeOpacity={disabled ? 1 : 0.85}
-								disabled={disabled}
+								activeOpacity={0.85}
+								onPress={() => toggleType(item.key)}
+								accessibilityRole='button'
+								accessibilityState={{ selected: active }}
+								accessibilityLabel={`Тип: ${item.label}`}
 							>
 								<MaterialCommunityIcons
 									name={item.icon}
-									size={18}
-									color={
-										active
-											? '#FFFFFF'
-											: disabled
-												? colors.textMuted
-												: colors.textSecondary
-									}
+									size={17}
+									color={active ? '#FFFFFF' : colors.textSecondary}
 								/>
 
 								<Text
 									style={[
 										styles.typeTabText,
-										{
-											color: active
-												? '#FFFFFF'
-												: disabled
-													? colors.textMuted
-													: colors.textSecondary,
-										},
+										{ color: active ? '#FFFFFF' : colors.textSecondary },
 									]}
 								>
 									{item.label}
@@ -129,9 +251,8 @@ export default function IndividualWorkoutScreen() {
 				</View>
 
 				<View style={styles.zoneGrid}>
-					{BODY_ZONES.map(item => {
-						const active = selectedZone === item.key;
-						const disabled = item.disabled;
+					{BODY_AREAS.map(item => {
+						const active = selectedBodyArea === item.key;
 
 						return (
 							<TouchableOpacity
@@ -146,32 +267,20 @@ export default function IndividualWorkoutScreen() {
 											: colors.card,
 										borderColor: active ? colors.primary : 'transparent',
 									},
-									disabled && styles.disabledItem,
 								]}
-								activeOpacity={disabled ? 1 : 0.85}
-								disabled={disabled}
+								activeOpacity={0.85}
+								onPress={() => toggleBodyArea(item.key)}
+								accessibilityRole='button'
+								accessibilityState={{ selected: active }}
+								accessibilityLabel={`Зона: ${item.label}`}
 							>
 								<MaterialCommunityIcons
 									name={item.icon}
 									size={24}
-									color={
-										active
-											? colors.primary
-											: disabled
-												? colors.textMuted
-												: colors.textSecondary
-									}
+									color={active ? colors.primary : colors.textSecondary}
 								/>
 
-								<Text
-									style={[
-										styles.zoneText,
-										{
-											color:
-												disabled && !active ? colors.textMuted : colors.text,
-										},
-									]}
-								>
+								<Text style={[styles.zoneText, { color: colors.text }]}>
 									{item.label}
 								</Text>
 							</TouchableOpacity>
@@ -179,60 +288,182 @@ export default function IndividualWorkoutScreen() {
 					})}
 				</View>
 
-				<View
-					style={[
-						styles.workoutCard,
-						{ backgroundColor: colors.card, shadowColor: colors.shadow },
-					]}
-				>
-					<View style={styles.workoutRow}>
-						<View
-							style={[
-								styles.workoutIcon,
-								{
-									backgroundColor: isDark ? colors.cardSecondary : '#E9F8F1',
-								},
-							]}
-						>
-							<MaterialCommunityIcons
-								name='dumbbell'
-								size={22}
-								color={colors.primary}
-							/>
-						</View>
-
-						<View style={styles.workoutInfo}>
-							<Text style={[styles.workoutTitle, { color: colors.text }]}>
-								Силовая для рук
-							</Text>
-
-							<Text style={[styles.workoutMeta, { color: colors.textMuted }]}>
-								25 минут · Средняя
-							</Text>
-
-							<Text style={[styles.workoutMeta, { color: colors.textMuted }]}>
-								сложность ~ 220 ккал
-							</Text>
-						</View>
-
-						<TouchableOpacity
-							style={[styles.startButton, { backgroundColor: colors.primary }]}
-							activeOpacity={0.85}
-							onPress={() => router.push('/workout-details?id=strength-arms')}
-						>
-							<Text style={styles.startButtonText}>Начать</Text>
-						</TouchableOpacity>
-					</View>
-
-					<View style={[styles.hintBar, { backgroundColor: colors.track }]}>
-						<Text style={[styles.hintText, { color: colors.textMuted }]}>
-							Подходит при хорошем самочувствии
+				{isLoading && workouts.length === 0 ? (
+					<View style={styles.stateContainer}>
+						<ActivityIndicator color={colors.primary} size='large' />
+						<Text style={[styles.stateText, { color: colors.textMuted }]}>
+							Загружаем тренировки…
 						</Text>
 					</View>
-				</View>
+				) : null}
+
+				{!isLoading && errorMessage && workouts.length === 0 ? (
+					<StateMessage
+						icon='cloud-offline-outline'
+						message={errorMessage}
+						actionLabel='Повторить'
+						onAction={retry}
+					/>
+				) : null}
+
+				{!isLoading && !errorMessage && workouts.length === 0 ? (
+					<StateMessage
+						icon='search-outline'
+						message='По выбранным фильтрам тренировки не найдены.'
+					/>
+				) : null}
+
+				{workouts.map(workout => (
+					<View
+						key={workout.id}
+						style={[
+							styles.workoutCard,
+							{ backgroundColor: colors.card, shadowColor: colors.shadow },
+						]}
+					>
+						<View style={styles.workoutRow}>
+							<View
+								style={[
+									styles.workoutIcon,
+									{
+										backgroundColor: isDark
+											? colors.cardSecondary
+											: '#E9F8F1',
+									},
+								]}
+							>
+								<MaterialCommunityIcons
+									name={WORKOUT_ICONS[workout.type]}
+									size={22}
+									color={colors.primary}
+								/>
+							</View>
+
+							<View style={styles.workoutInfo}>
+								<Text style={[styles.workoutTitle, { color: colors.text }]}>
+									{workout.title}
+								</Text>
+
+								<Text
+									style={[styles.workoutMeta, { color: colors.textMuted }]}
+								>
+									{workout.durationMinutes} минут ·{' '}
+									{INTENSITY_LABELS[workout.intensity]}
+								</Text>
+
+								<Text
+									style={[styles.workoutMeta, { color: colors.textMuted }]}
+								>
+									~ {workout.estimatedCalories} ккал
+								</Text>
+							</View>
+
+							<TouchableOpacity
+								style={[
+									styles.startButton,
+									{ backgroundColor: colors.primary },
+								]}
+								activeOpacity={0.85}
+								onPress={() => router.push({
+									pathname: '/workout-details',
+									params: { id: String(workout.id) },
+								})}
+								accessibilityRole='button'
+								accessibilityLabel={`Открыть ${workout.title}`}
+							>
+								<Text style={styles.startButtonText}>Открыть</Text>
+							</TouchableOpacity>
+						</View>
+
+						{workout.description ? (
+							<View style={[styles.hintBar, { backgroundColor: colors.track }]}>
+								<Text
+									style={[styles.hintText, { color: colors.textMuted }]}
+									numberOfLines={2}
+								>
+									{workout.description}
+								</Text>
+							</View>
+						) : null}
+					</View>
+				))}
+
+				{errorMessage && workouts.length > 0 ? (
+					<View style={[styles.inlineError, { backgroundColor: colors.card }]}>
+						<Text style={[styles.inlineErrorText, { color: colors.textMuted }]}>
+							{errorMessage}
+						</Text>
+						<TouchableOpacity
+							onPress={retry}
+							accessibilityRole='button'
+							accessibilityLabel='Повторить загрузку'
+						>
+							<Text style={[styles.retryText, { color: colors.primary }]}>
+								Повторить
+							</Text>
+						</TouchableOpacity>
+					</View>
+				) : null}
+
+				{hasMore ? (
+					<TouchableOpacity
+						style={[
+							styles.loadMoreButton,
+							{
+								backgroundColor: colors.card,
+								borderColor: colors.primary,
+							},
+						]}
+						onPress={() => setPage(current => current + 1)}
+						disabled={isLoadingMore}
+						accessibilityRole='button'
+						accessibilityLabel='Показать ещё'
+					>
+						{isLoadingMore ? (
+							<ActivityIndicator size='small' color={colors.primary} />
+						) : (
+							<Text style={[styles.loadMoreText, { color: colors.primary }]}>
+								Показать ещё
+							</Text>
+						)}
+					</TouchableOpacity>
+				) : null}
 			</ScrollView>
 
 			<BottomNav />
+		</View>
+	);
+}
+
+function StateMessage({
+	icon,
+	message,
+	actionLabel,
+	onAction,
+}: {
+	icon: keyof typeof Ionicons.glyphMap;
+	message: string;
+	actionLabel?: string;
+	onAction?: () => void;
+}) {
+	const { colors } = useContext(ThemeContext);
+
+	return (
+		<View style={styles.stateContainer}>
+			<Ionicons name={icon} size={34} color={colors.textMuted} />
+			<Text style={[styles.stateText, { color: colors.textMuted }]}>
+				{message}
+			</Text>
+			{actionLabel && onAction ? (
+				<TouchableOpacity
+					style={[styles.retryButton, { backgroundColor: colors.primary }]}
+					onPress={onAction}
+					accessibilityRole='button'
+					accessibilityLabel={actionLabel}
+				>
+					<Text style={styles.retryButtonText}>{actionLabel}</Text>
+				</TouchableOpacity>
+			) : null}
 		</View>
 	);
 }
@@ -280,15 +511,15 @@ const styles = StyleSheet.create({
 	},
 	typeTab: {
 		flex: 1,
-		height: 34,
+		minHeight: 38,
 		borderRadius: 9,
-		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'center',
-		gap: 5,
+		gap: 2,
+		paddingVertical: 3,
 	},
 	typeTabText: {
-		fontSize: 13,
+		fontSize: 10,
 		fontWeight: '700',
 	},
 	zoneGrid: {
@@ -310,14 +541,12 @@ const styles = StyleSheet.create({
 	zoneText: {
 		fontSize: 13,
 		fontWeight: '600',
-	},
-	disabledItem: {
-		opacity: 0.4,
+		flexShrink: 1,
 	},
 	workoutCard: {
 		borderRadius: 16,
 		padding: 12,
-		marginBottom: 20,
+		marginBottom: 14,
 		shadowOpacity: 0.08,
 		shadowRadius: 10,
 		shadowOffset: { width: 0, height: 2 },
@@ -349,24 +578,76 @@ const styles = StyleSheet.create({
 	},
 	startButton: {
 		borderRadius: 14,
-		paddingHorizontal: 16,
+		paddingHorizontal: 14,
 		height: 30,
 		alignItems: 'center',
 		justifyContent: 'center',
 	},
 	startButtonText: {
 		color: '#FFFFFF',
-		fontSize: 13,
+		fontSize: 12,
 		fontWeight: '700',
 	},
 	hintBar: {
-		height: 18,
+		minHeight: 22,
 		borderRadius: 9,
 		justifyContent: 'center',
 		paddingHorizontal: 12,
+		paddingVertical: 4,
 		marginTop: 10,
 	},
 	hintText: {
 		fontSize: 11,
+		lineHeight: 15,
+	},
+	stateContainer: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 36,
+		gap: 12,
+	},
+	stateText: {
+		fontSize: 14,
+		lineHeight: 20,
+		textAlign: 'center',
+	},
+	retryButton: {
+		minHeight: 38,
+		borderRadius: 14,
+		paddingHorizontal: 18,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	retryButtonText: {
+		color: '#FFFFFF',
+		fontSize: 13,
+		fontWeight: '700',
+	},
+	inlineError: {
+		borderRadius: 14,
+		padding: 12,
+		marginBottom: 14,
+		alignItems: 'center',
+		gap: 8,
+	},
+	inlineErrorText: {
+		fontSize: 12,
+		textAlign: 'center',
+	},
+	retryText: {
+		fontSize: 13,
+		fontWeight: '700',
+	},
+	loadMoreButton: {
+		minHeight: 44,
+		borderRadius: 15,
+		borderWidth: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginTop: 2,
+	},
+	loadMoreText: {
+		fontSize: 14,
+		fontWeight: '700',
 	},
 });
