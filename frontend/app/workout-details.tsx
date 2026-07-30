@@ -1,129 +1,182 @@
-import React, { useContext } from 'react';
+import React, {
+	useContext,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from 'react';
 import {
-	View,
-	Text,
-	StyleSheet,
-	TouchableOpacity,
+	ActivityIndicator,
 	ScrollView,
+	StyleSheet,
+	Text,
+	TouchableOpacity,
+	View,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { normalizeApiError, withRequestId } from '../src/api/api-error';
+import type {
+	Intensity,
+	Workout,
+	WorkoutExercise,
+	WorkoutType,
+} from '../src/api/contracts';
+import { getWorkoutById } from '../src/api/workouts.api';
 import { ThemeContext } from '../src/context/ThemeContext';
 
-const WORKOUTS = {
-	'strength-arms': {
-		title: 'Силовая для рук',
-		durationMin: 25,
-		intensity: 'Средняя',
-		calories: 220,
-		description: 'Тренировка для укрепления рук, плеч и верхней части тела.',
-		icon: 'dumbbell',
-		exercises: [
-			{
-				title: 'Отжимания',
-				time: '3 подхода × 10 раз',
-				description:
-					'Держите корпус ровно, опускайтесь плавно и не прогибайте поясницу.',
-			},
-			{
-				title: 'Планка на руках',
-				time: '3 подхода × 30 сек',
-				description: 'Напрягите пресс и удерживайте тело в прямой линии.',
-			},
-			{
-				title: 'Сгибания рук',
-				time: '3 подхода × 12 раз',
-				description: 'Выполняйте движение медленно, контролируя локти.',
-			},
-		],
-	},
-	'stretching-full-body': {
-		title: 'Растяжка для всего тела',
-		durationMin: 15,
-		intensity: 'Низкая',
-		calories: 50,
-		description: 'Мягкая тренировка для расслабления мышц и восстановления.',
-		icon: 'yoga',
-		exercises: [
-			{
-				title: 'Наклоны вперёд',
-				time: '2 минуты',
-				description: 'Тянитесь вниз без рывков, расслабляя спину и шею.',
-			},
-			{
-				title: 'Растяжка плеч',
-				time: '2 минуты',
-				description: 'Плавно тяните руку к противоположному плечу.',
-			},
-			{
-				title: 'Поза ребёнка',
-				time: '3 минуты',
-				description:
-					'Опуститесь на колени, вытяните руки вперёд и расслабьтесь.',
-			},
-		],
-	},
-	'strength-full-body': {
-		title: 'Силовая для всего тела',
-		durationMin: 25,
-		intensity: 'Средняя',
-		calories: 220,
-		description: 'Комплексная силовая тренировка для основных групп мышц.',
-		icon: 'dumbbell',
-		exercises: [
-			{
-				title: 'Приседания',
-				time: '3 подхода × 12 раз',
-				description: 'Держите спину ровно, колени направляйте по линии стоп.',
-			},
-			{
-				title: 'Отжимания',
-				time: '3 подхода × 10 раз',
-				description: 'Опускайтесь плавно, не проваливая плечи.',
-			},
-			{
-				title: 'Планка',
-				time: '3 подхода × 30 сек',
-				description: 'Напрягите пресс и не поднимайте таз слишком высоко.',
-			},
-		],
-	},
-	'cardio-legs': {
-		title: 'Кардио для ног',
-		durationMin: 27,
-		intensity: 'Высокая',
-		calories: 260,
-		description: 'Активная тренировка для ног и выносливости.',
-		icon: 'heart',
-		exercises: [
-			{
-				title: 'Бег на месте',
-				time: '3 минуты',
-				description: 'Двигайтесь активно, помогайте себе руками.',
-			},
-			{
-				title: 'Прыжки',
-				time: '3 подхода × 30 сек',
-				description: 'Приземляйтесь мягко, не блокируйте колени.',
-			},
-			{
-				title: 'Выпады',
-				time: '3 подхода × 10 раз',
-				description: 'Следите, чтобы колено не уходило далеко за носок.',
-			},
-		],
-	},
-} as const;
+const WORKOUT_ICONS: Record<
+	WorkoutType,
+	keyof typeof MaterialCommunityIcons.glyphMap
+> = {
+	cardio: 'heart',
+	strength: 'dumbbell',
+	stretching: 'yoga',
+	yoga: 'meditation',
+};
+
+const INTENSITY_LABELS: Record<Intensity, string> = {
+	low: 'Низкая',
+	medium: 'Средняя',
+	high: 'Высокая',
+};
+
+type ScreenStatus = 'loading' | 'ready' | 'invalid' | 'notFound' | 'error';
+
+function parseWorkoutId(value: string | string[] | undefined): number | undefined {
+	if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) {
+		return undefined;
+	}
+
+	const workoutId = Number(value);
+
+	return Number.isSafeInteger(workoutId) && workoutId <= 2147483647
+		? workoutId
+		: undefined;
+}
+
+function pluralize(
+	value: number,
+	one: string,
+	few: string,
+	many: string,
+): string {
+	const remainder100 = value % 100;
+	const remainder10 = value % 10;
+
+	if (remainder100 >= 11 && remainder100 <= 14) return many;
+	if (remainder10 === 1) return one;
+	if (remainder10 >= 2 && remainder10 <= 4) return few;
+
+	return many;
+}
+
+function formatDuration(seconds: number, preferMinutes: boolean): string {
+	if (preferMinutes && seconds % 60 === 0) {
+		const minutes = seconds / 60;
+
+		return `${minutes} ${pluralize(minutes, 'минута', 'минуты', 'минут')}`;
+	}
+
+	return `${seconds} сек`;
+}
+
+export function formatExerciseTarget(item: WorkoutExercise): string {
+	let target = '';
+
+	if (item.sets !== undefined && item.repetitions !== undefined) {
+		target = `${item.sets} ${pluralize(
+			item.sets,
+			'подход',
+			'подхода',
+			'подходов',
+		)} × ${item.repetitions} раз`;
+	} else if (item.sets !== undefined && item.durationSeconds !== undefined) {
+		target = `${item.sets} ${pluralize(
+			item.sets,
+			'подход',
+			'подхода',
+			'подходов',
+		)} × ${formatDuration(item.durationSeconds, false)}`;
+	} else if (item.repetitions !== undefined) {
+		target = `${item.repetitions} раз`;
+	} else if (item.durationSeconds !== undefined) {
+		target = formatDuration(item.durationSeconds, true);
+	} else if (item.sets !== undefined) {
+		target = `${item.sets} ${pluralize(
+			item.sets,
+			'подход',
+			'подхода',
+			'подходов',
+		)}`;
+	}
+
+	if (item.restSeconds !== undefined) {
+		const rest = `отдых ${formatDuration(item.restSeconds, false)}`;
+		target = target ? `${target} · ${rest}` : rest;
+	}
+
+	return target || 'Выполняйте по инструкции';
+}
 
 export default function WorkoutDetailsScreen() {
 	const insets = useSafeAreaInsets();
 	const { colors, isDark } = useContext(ThemeContext);
-	const params = useLocalSearchParams();
+	const params = useLocalSearchParams<{ id?: string | string[] }>();
+	const workoutId = useMemo(() => parseWorkoutId(params.id), [params.id]);
+	const [workout, setWorkout] = useState<Workout>();
+	const [status, setStatus] = useState<ScreenStatus>(
+		workoutId === undefined ? 'invalid' : 'loading',
+	);
+	const [errorMessage, setErrorMessage] = useState<string>();
+	const [retryVersion, setRetryVersion] = useState(0);
+	const requestSequence = useRef(0);
 
-	const workoutId = String(params.id || 'strength-arms');
-	const workout =
-		WORKOUTS[workoutId as keyof typeof WORKOUTS] || WORKOUTS['strength-arms'];
+	useEffect(() => {
+		if (workoutId === undefined) {
+			requestSequence.current += 1;
+			setWorkout(undefined);
+			setErrorMessage(undefined);
+			setStatus('invalid');
+			return;
+		}
+
+		const sequence = ++requestSequence.current;
+		setWorkout(undefined);
+		setErrorMessage(undefined);
+		setStatus('loading');
+
+		getWorkoutById(workoutId)
+			.then(result => {
+				if (requestSequence.current !== sequence) return;
+
+				setWorkout(result);
+				setStatus('ready');
+			})
+			.catch(error => {
+				if (requestSequence.current !== sequence) return;
+
+				const apiError = normalizeApiError(error);
+
+				if (apiError.status === 404) {
+					setStatus('notFound');
+					return;
+				}
+
+				setErrorMessage(withRequestId(
+					'Не удалось загрузить тренировку. Проверьте подключение и попробуйте снова.',
+					apiError.requestId,
+				));
+				setStatus('error');
+			});
+
+		return () => {
+			if (requestSequence.current === sequence) {
+				requestSequence.current += 1;
+			}
+		};
+	}, [retryVersion, workoutId]);
 
 	return (
 		<View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -142,6 +195,8 @@ export default function WorkoutDetailsScreen() {
 						style={styles.backButton}
 						activeOpacity={0.8}
 						onPress={() => router.back()}
+						accessibilityRole='button'
+						accessibilityLabel='Назад'
 					>
 						<Ionicons name='chevron-back' size={24} color={colors.text} />
 					</TouchableOpacity>
@@ -155,101 +210,245 @@ export default function WorkoutDetailsScreen() {
 
 				<View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-				<View
-					style={[
-						styles.heroCard,
-						{ backgroundColor: colors.card, shadowColor: colors.shadow },
-					]}
-				>
-					<View
-						style={[
-							styles.heroIcon,
-							{ backgroundColor: isDark ? colors.cardSecondary : '#E9F8F1' },
-						]}
-					>
-						<MaterialCommunityIcons
-							name={workout.icon as any}
-							size={32}
-							color={colors.primary}
-						/>
-					</View>
+				{status === 'loading' ? (
+					<ScreenState
+						icon='barbell-outline'
+						message='Загружаем тренировку…'
+						loading
+					/>
+				) : null}
 
-					<Text style={[styles.title, { color: colors.text }]}>
-						{workout.title}
-					</Text>
+				{status === 'invalid' ? (
+					<ScreenState
+						icon='warning-outline'
+						title='Некорректная ссылка'
+						message='В адресе должен быть указан положительный числовой ID тренировки.'
+					/>
+				) : null}
 
-					<Text style={[styles.description, { color: colors.textMuted }]}>
-						{workout.description}
-					</Text>
+				{status === 'notFound' ? (
+					<ScreenState
+						icon='search-outline'
+						title='Тренировка не найдена'
+						message='Возможно, она была удалена или больше недоступна.'
+					/>
+				) : null}
 
-					<View style={styles.metaRow}>
-						<MetaItem
-							icon='time-outline'
-							label={`${workout.durationMin} мин`}
-							color={colors.primary}
-						/>
-						<MetaItem
-							icon='flame-outline'
-							label={`${workout.calories} ккал`}
-							color={colors.warning}
-						/>
-						<MetaItem
-							icon='speedometer-outline'
-							label={workout.intensity}
-							color={colors.blue}
-						/>
-					</View>
-				</View>
+				{status === 'error' ? (
+					<ScreenState
+						icon='cloud-offline-outline'
+						title='Ошибка загрузки'
+						message={errorMessage ?? 'Не удалось загрузить тренировку.'}
+						actionLabel='Повторить'
+						onAction={() => setRetryVersion(current => current + 1)}
+					/>
+				) : null}
 
-				<Text style={[styles.sectionTitle, { color: colors.text }]}>
-					Упражнения
-				</Text>
-
-				{workout.exercises.map((exercise, index) => (
-					<View
-						key={exercise.title}
-						style={[
-							styles.exerciseCard,
-							{ backgroundColor: colors.card, shadowColor: colors.shadow },
-						]}
-					>
-						<View style={styles.exerciseTop}>
+				{status === 'ready' && workout ? (
+					<>
+						<View
+							style={[
+								styles.heroCard,
+								{
+									backgroundColor: colors.card,
+									shadowColor: colors.shadow,
+								},
+							]}
+						>
 							<View
 								style={[
-									styles.exerciseNumber,
-									{ backgroundColor: colors.primary },
+									styles.heroIcon,
+									{
+										backgroundColor: isDark
+											? colors.cardSecondary
+											: '#E9F8F1',
+									},
 								]}
 							>
-								<Text style={styles.exerciseNumberText}>{index + 1}</Text>
+								<MaterialCommunityIcons
+									name={WORKOUT_ICONS[workout.type]}
+									size={32}
+									color={colors.primary}
+								/>
 							</View>
 
-							<View style={styles.exerciseInfo}>
-								<Text style={[styles.exerciseTitle, { color: colors.text }]}>
-									{exercise.title}
-								</Text>
+							<Text style={[styles.title, { color: colors.text }]}>
+								{workout.title}
+							</Text>
 
-								<Text style={[styles.exerciseTime, { color: colors.primary }]}>
-									{exercise.time}
+							{workout.description ? (
+								<Text
+									style={[styles.description, { color: colors.textMuted }]}
+								>
+									{workout.description}
 								</Text>
+							) : null}
+
+							<View style={styles.metaRow}>
+								<MetaItem
+									icon='time-outline'
+									label={`${workout.durationMinutes} мин`}
+									color={colors.primary}
+								/>
+								<MetaItem
+									icon='flame-outline'
+									label={`${workout.estimatedCalories} ккал`}
+									color={colors.warning}
+								/>
+								<MetaItem
+									icon='speedometer-outline'
+									label={INTENSITY_LABELS[workout.intensity]}
+									color={colors.blue}
+								/>
 							</View>
 						</View>
 
-						<Text
-							style={[styles.exerciseDescription, { color: colors.textMuted }]}
-						>
-							{exercise.description}
+						<Text style={[styles.sectionTitle, { color: colors.text }]}>
+							Упражнения
 						</Text>
-					</View>
-				))}
 
-				<TouchableOpacity
-					style={[styles.startButton, { backgroundColor: colors.primary }]}
-					activeOpacity={0.85}
-					onPress={() => router.push('/workout-session')}
-				>
-					<Text style={styles.startButtonText}>Начать тренировку</Text>
-				</TouchableOpacity>
+						{workout.exercises.map((item, index) => (
+							<View
+								key={`${item.exerciseId}:${item.order}`}
+								style={[
+									styles.exerciseCard,
+									{
+										backgroundColor: colors.card,
+										shadowColor: colors.shadow,
+									},
+								]}
+							>
+								<View style={styles.exerciseTop}>
+									<View
+										style={[
+											styles.exerciseNumber,
+											{ backgroundColor: colors.primary },
+										]}
+									>
+										<Text style={styles.exerciseNumberText}>{index + 1}</Text>
+									</View>
+
+									<View style={styles.exerciseInfo}>
+										<Text
+											style={[styles.exerciseTitle, { color: colors.text }]}
+										>
+											{item.exercise.title}
+										</Text>
+
+										<Text
+											style={[
+												styles.exerciseTime,
+												{ color: colors.primary },
+											]}
+										>
+											{formatExerciseTarget(item)}
+										</Text>
+									</View>
+								</View>
+
+								<Text
+									style={[
+										styles.exerciseDescription,
+										{ color: colors.textMuted },
+									]}
+								>
+									{item.exercise.description}
+								</Text>
+
+								<View style={styles.instructions}>
+									{item.exercise.instructions.map((instruction, stepIndex) => (
+										<View
+											key={`${item.exerciseId}:instruction:${stepIndex}`}
+											style={styles.instructionRow}
+										>
+											<Text
+												style={[
+													styles.instructionBullet,
+													{ color: colors.primary },
+												]}
+											>
+												•
+											</Text>
+											<Text
+												style={[
+													styles.instructionText,
+													{ color: colors.textMuted },
+												]}
+											>
+												{instruction}
+											</Text>
+										</View>
+									))}
+								</View>
+							</View>
+						))}
+
+						<TouchableOpacity
+							style={[
+								styles.startButton,
+								{ backgroundColor: colors.primary },
+							]}
+							activeOpacity={0.85}
+							onPress={() => router.push('/workout-session')}
+							accessibilityRole='button'
+							accessibilityLabel='Начать тренировку'
+						>
+							<Text style={styles.startButtonText}>
+								Начать тренировку
+							</Text>
+						</TouchableOpacity>
+					</>
+				) : null}
 			</ScrollView>
+		</View>
+	);
+}
+
+function ScreenState({
+	icon,
+	title,
+	message,
+	loading = false,
+	actionLabel,
+	onAction,
+}: {
+	icon: keyof typeof Ionicons.glyphMap;
+	title?: string;
+	message: string;
+	loading?: boolean;
+	actionLabel?: string;
+	onAction?: () => void;
+}) {
+	const { colors } = useContext(ThemeContext);
+
+	return (
+		<View style={styles.stateContainer}>
+			{loading ? (
+				<ActivityIndicator size='large' color={colors.primary} />
+			) : (
+				<Ionicons name={icon} size={38} color={colors.textMuted} />
+			)}
+
+			{title ? (
+				<Text style={[styles.stateTitle, { color: colors.text }]}>
+					{title}
+				</Text>
+			) : null}
+
+			<Text style={[styles.stateText, { color: colors.textMuted }]}>
+				{message}
+			</Text>
+
+			{actionLabel && onAction ? (
+				<TouchableOpacity
+					style={[styles.retryButton, { backgroundColor: colors.primary }]}
+					onPress={onAction}
+					accessibilityRole='button'
+					accessibilityLabel={actionLabel}
+				>
+					<Text style={styles.retryButtonText}>{actionLabel}</Text>
+				</TouchableOpacity>
+			) : null}
 		</View>
 	);
 }
@@ -304,6 +503,35 @@ const styles = StyleSheet.create({
 		marginHorizontal: -20,
 		marginBottom: 16,
 	},
+	stateContainer: {
+		minHeight: 320,
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 12,
+		paddingHorizontal: 16,
+	},
+	stateTitle: {
+		fontSize: 18,
+		fontWeight: '700',
+		textAlign: 'center',
+	},
+	stateText: {
+		fontSize: 14,
+		lineHeight: 20,
+		textAlign: 'center',
+	},
+	retryButton: {
+		minHeight: 40,
+		borderRadius: 14,
+		paddingHorizontal: 20,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	retryButtonText: {
+		color: '#FFFFFF',
+		fontSize: 13,
+		fontWeight: '700',
+	},
 	heroCard: {
 		borderRadius: 18,
 		padding: 16,
@@ -336,6 +564,8 @@ const styles = StyleSheet.create({
 	},
 	metaRow: {
 		flexDirection: 'row',
+		flexWrap: 'wrap',
+		justifyContent: 'center',
 		gap: 8,
 	},
 	metaItem: {
@@ -395,6 +625,24 @@ const styles = StyleSheet.create({
 		marginTop: 2,
 	},
 	exerciseDescription: {
+		fontSize: 13,
+		lineHeight: 18,
+	},
+	instructions: {
+		marginTop: 10,
+		gap: 5,
+	},
+	instructionRow: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+	},
+	instructionBullet: {
+		fontSize: 16,
+		lineHeight: 19,
+		marginRight: 7,
+	},
+	instructionText: {
+		flex: 1,
 		fontSize: 13,
 		lineHeight: 18,
 	},
