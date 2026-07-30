@@ -1484,6 +1484,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Nutrition]
       operationId: createCustomFoodProduct
