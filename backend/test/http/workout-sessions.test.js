@@ -1,6 +1,7 @@
 jest.mock(
 	'../../src/modules/workout-sessions/workout-sessions.service',
 	() => ({
+		listWorkoutSessions: jest.fn(),
 		startWorkoutSession: jest.fn(),
 		getActiveWorkoutSession: jest.fn(),
 		getWorkoutSession: jest.fn(),
@@ -115,11 +116,60 @@ describe('Workout sessions HTTP contracts', () => {
 			});
 	});
 
-	test('does not expose the FITLY-044 history endpoint', async () => {
+	test('GET lists filtered workout sessions with pagination', async () => {
+		service.listWorkoutSessions.mockResolvedValueOnce({
+			items: [sessionDto({ status: 'completed' })],
+			meta: {
+				page: 1,
+				pageSize: 20,
+				total: 1,
+				totalPages: 1,
+			},
+		});
+
 		await request(app)
-			.get('/api/v1/workout-sessions')
+			.get(
+				'/api/v1/workout-sessions?from=2026-07-01&to=2026-07-31&status=completed',
+			)
 			.set('Authorization', authorization())
-			.expect(404);
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toHaveLength(1);
+				expect(response.body.meta).toMatchObject({
+					page: 1,
+					pageSize: 20,
+					total: 1,
+					totalPages: 1,
+				});
+			});
+		expect(service.listWorkoutSessions).toHaveBeenCalledWith(2, {
+			from: '2026-07-01',
+			to: '2026-07-31',
+			status: 'completed',
+			page: 1,
+			pageSize: 20,
+		});
+	});
+
+	test.each([
+		['?from=2026-02-30', 'from', 'INVALID_DATE'],
+		['?from=2026-08-01&to=2026-07-31', 'to', 'INVALID_RANGE'],
+		['?status=finished', 'status', 'INVALID_ENUM'],
+		['?pageSize=101', 'pageSize', 'OUT_OF_RANGE'],
+		['?unknown=true', 'unknown', 'UNKNOWN_FIELD'],
+	])('rejects invalid history query %s', async (query, field, code) => {
+		await request(app)
+			.get(`/api/v1/workout-sessions${query}`)
+			.set('Authorization', authorization())
+			.expect(400)
+			.expect(response => {
+				expect(response.body.error.details).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({ field, code }),
+					]),
+				);
+			});
+		expect(service.listWorkoutSessions).not.toHaveBeenCalled();
 	});
 
 	test('GET by id returns only the current user session', async () => {
@@ -301,6 +351,7 @@ describe('Workout sessions HTTP contracts', () => {
 	});
 
 	test('requires authentication for every endpoint', async () => {
+		await request(app).get('/api/v1/workout-sessions').expect(401);
 		await request(app).post('/api/v1/workout-sessions').send({}).expect(401);
 		await request(app).get('/api/v1/workout-sessions/active').expect(401);
 		await request(app).get('/api/v1/workout-sessions/5').expect(401);

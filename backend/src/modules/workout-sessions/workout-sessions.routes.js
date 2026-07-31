@@ -3,12 +3,19 @@ const { authMiddleware } = require('../auth/auth.middleware');
 const workoutSessionsController = require('./workout-sessions.controller');
 const {
 	validateWorkoutSessionId,
+	validateWorkoutSessionListQuery,
 	validateStartWorkoutSession,
 	validateFinishWorkoutSession,
 } = require('./workout-sessions.validators');
 
 const router = express.Router();
 
+router.get(
+	'/',
+	authMiddleware,
+	validateWorkoutSessionListQuery,
+	workoutSessionsController.listWorkoutSessions,
+);
 router.post(
 	'/',
 	authMiddleware,
