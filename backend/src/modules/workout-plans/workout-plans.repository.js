@@ -20,8 +20,8 @@ const workoutPlanColumns = `
 	w.is_active AS "workoutIsActive"
 `;
 
-async function getWorkoutPlanById(userId, planId) {
-	const result = await pool.query(
+async function getWorkoutPlanById(userId, planId, queryable = pool) {
+	const result = await queryable.query(
 		`SELECT ${workoutPlanColumns}
 		 FROM workout_plans wp
 		 JOIN workouts w ON w.id = wp.workout_id
@@ -31,6 +31,34 @@ async function getWorkoutPlanById(userId, planId) {
 	);
 
 	return result.rows[0] || null;
+}
+
+async function getWorkoutPlanForUpdate(client, userId, planId) {
+	const result = await client.query(
+		`SELECT ${workoutPlanColumns}
+		 FROM workout_plans wp
+		 JOIN workouts w ON w.id = wp.workout_id
+		 WHERE wp.user_id = $1
+		   AND wp.id = $2
+		 FOR UPDATE OF wp`,
+		[userId, planId],
+	);
+
+	return result.rows[0] || null;
+}
+
+async function hasActiveWorkoutSession(client, planId) {
+	const result = await client.query(
+		`SELECT EXISTS (
+			SELECT 1
+			FROM workout_sessions
+			WHERE workout_plan_id = $1
+			  AND status IN ('in_progress', 'paused')
+		 ) AS "exists"`,
+		[planId],
+	);
+
+	return result.rows[0].exists;
 }
 
 async function listWorkoutPlans(userId, filters, timezone) {
@@ -86,8 +114,13 @@ async function createWorkoutPlan(userId, workoutPlan) {
 	return getWorkoutPlanById(userId, result.rows[0].id);
 }
 
-async function updateWorkoutPlan(userId, planId, workoutPlan) {
-	const result = await pool.query(
+async function updateWorkoutPlan(
+	userId,
+	planId,
+	workoutPlan,
+	queryable = pool,
+) {
+	const result = await queryable.query(
 		`UPDATE workout_plans
 		 SET workout_id = $3,
 		     scheduled_at = $4,
@@ -113,11 +146,15 @@ async function updateWorkoutPlan(userId, planId, workoutPlan) {
 		return null;
 	}
 
-	return getWorkoutPlanById(userId, result.rows[0].id);
+	return getWorkoutPlanById(userId, result.rows[0].id, queryable);
 }
 
-async function cancelWorkoutPlan(userId, planId) {
-	const result = await pool.query(
+async function cancelWorkoutPlan(
+	userId,
+	planId,
+	queryable = pool,
+) {
+	const result = await queryable.query(
 		`UPDATE workout_plans
 		 SET status = 'cancelled',
 		     updated_at = CURRENT_TIMESTAMP
@@ -132,11 +169,13 @@ async function cancelWorkoutPlan(userId, planId) {
 		return null;
 	}
 
-	return getWorkoutPlanById(userId, result.rows[0].id);
+	return getWorkoutPlanById(userId, result.rows[0].id, queryable);
 }
 
 module.exports = {
 	getWorkoutPlanById,
+	getWorkoutPlanForUpdate,
+	hasActiveWorkoutSession,
 	listWorkoutPlans,
 	createWorkoutPlan,
 	updateWorkoutPlan,

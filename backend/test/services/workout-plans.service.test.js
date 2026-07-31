@@ -1,5 +1,7 @@
 jest.mock('../../src/modules/workout-plans/workout-plans.repository', () => ({
 	getWorkoutPlanById: jest.fn(),
+	getWorkoutPlanForUpdate: jest.fn(),
+	hasActiveWorkoutSession: jest.fn(),
 	listWorkoutPlans: jest.fn(),
 	createWorkoutPlan: jest.fn(),
 	updateWorkoutPlan: jest.fn(),
@@ -10,6 +12,10 @@ jest.mock('../../src/modules/workouts/workouts.repository', () => ({
 }));
 jest.mock('../../src/modules/settings/user-local-date.service', () => ({
 	getUserTimezone: jest.fn(),
+}));
+const mockTransactionClient = { query: jest.fn() };
+jest.mock('../../src/utils/db-transaction', () => ({
+	withTransaction: jest.fn(callback => callback(mockTransactionClient)),
 }));
 
 const workoutPlansRepository =
@@ -52,6 +58,8 @@ describe('workout plans service', () => {
 			.mockReturnValue(Date.parse('2026-07-31T12:00:00.000Z'));
 		getUserTimezone.mockResolvedValue('Europe/Moscow');
 		workoutsRepository.getActiveWorkoutById.mockResolvedValue({ id: 3 });
+		workoutPlansRepository.hasActiveWorkoutSession
+			.mockResolvedValue(false);
 	});
 
 	afterEach(() => {
@@ -166,7 +174,7 @@ describe('workout plans service', () => {
 	});
 
 	test('updates a scheduled plan and preserves an omitted reminder', async () => {
-		workoutPlansRepository.getWorkoutPlanById
+		workoutPlansRepository.getWorkoutPlanForUpdate
 			.mockResolvedValueOnce(workoutPlanRow());
 		workoutPlansRepository.updateWorkoutPlan
 			.mockResolvedValueOnce(workoutPlanRow({
@@ -188,6 +196,7 @@ describe('workout plans service', () => {
 				scheduledAt: '2026-08-11T19:00:00+03:00',
 				reminderMinutesBefore: undefined,
 			},
+			mockTransactionClient,
 		);
 	});
 
@@ -195,7 +204,7 @@ describe('workout plans service', () => {
 		['cancelled', 'WORKOUT_PLAN_NOT_EDITABLE'],
 		['completed', 'WORKOUT_PLAN_ALREADY_COMPLETED'],
 	])('rejects updating a %s plan', async (status, code) => {
-		workoutPlansRepository.getWorkoutPlanById
+		workoutPlansRepository.getWorkoutPlanForUpdate
 			.mockResolvedValueOnce(workoutPlanRow({ status }));
 
 		await expect(workoutPlansService.updateWorkoutPlan(2, 7, {
@@ -207,7 +216,8 @@ describe('workout plans service', () => {
 	});
 
 	test('does not disclose a missing or foreign plan', async () => {
-		workoutPlansRepository.getWorkoutPlanById.mockResolvedValueOnce(null);
+		workoutPlansRepository.getWorkoutPlanForUpdate
+			.mockResolvedValueOnce(null);
 
 		await expect(workoutPlansService.updateWorkoutPlan(2, 7, {
 			workoutId: 3,
@@ -219,7 +229,7 @@ describe('workout plans service', () => {
 	});
 
 	test('cancels a scheduled plan', async () => {
-		workoutPlansRepository.getWorkoutPlanById
+		workoutPlansRepository.getWorkoutPlanForUpdate
 			.mockResolvedValueOnce(workoutPlanRow());
 		workoutPlansRepository.cancelWorkoutPlan
 			.mockResolvedValueOnce(workoutPlanRow({ status: 'cancelled' }));
@@ -230,18 +240,40 @@ describe('workout plans service', () => {
 				status: 'cancelled',
 			});
 		expect(workoutPlansRepository.cancelWorkoutPlan)
-			.toHaveBeenCalledWith(2, 7);
+			.toHaveBeenCalledWith(2, 7, mockTransactionClient);
 	});
 
 	test.each([
 		['cancelled', 'WORKOUT_PLAN_ALREADY_CANCELLED'],
 		['completed', 'WORKOUT_PLAN_ALREADY_COMPLETED'],
 	])('rejects cancelling a %s plan', async (status, code) => {
-		workoutPlansRepository.getWorkoutPlanById
+		workoutPlansRepository.getWorkoutPlanForUpdate
 			.mockResolvedValueOnce(workoutPlanRow({ status }));
 
 		await expect(workoutPlansService.cancelWorkoutPlan(2, 7))
 			.rejects.toMatchObject({ status: 409, code });
 		expect(workoutPlansRepository.cancelWorkoutPlan).not.toHaveBeenCalled();
 	});
+
+	test.each(['update', 'cancel'])(
+		'rejects %s while the plan has an active session',
+		async operation => {
+			workoutPlansRepository.getWorkoutPlanForUpdate
+				.mockResolvedValueOnce(workoutPlanRow());
+			workoutPlansRepository.hasActiveWorkoutSession
+				.mockResolvedValueOnce(true);
+
+			const action = operation === 'update'
+				? workoutPlansService.updateWorkoutPlan(2, 7, {
+					workoutId: 3,
+					scheduledAt: '2026-08-11T16:00:00Z',
+				})
+				: workoutPlansService.cancelWorkoutPlan(2, 7);
+
+			await expect(action).rejects.toMatchObject({
+				status: 409,
+				code: 'WORKOUT_PLAN_HAS_ACTIVE_SESSION',
+			});
+		},
+	);
 });

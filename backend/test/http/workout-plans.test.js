@@ -4,6 +4,12 @@ jest.mock('../../src/config/db', () => ({
 		connect: jest.fn(),
 	},
 }));
+jest.mock('../../src/utils/db-transaction', () => ({
+	withTransaction: async callback => {
+		const { pool } = require('../../src/config/db');
+		return callback(pool);
+	},
+}));
 
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -171,6 +177,7 @@ describe('Workout plans HTTP contracts', () => {
 	test('PATCH updates a plan and preserves an omitted reminder', async () => {
 		pool.query
 			.mockResolvedValueOnce({ rows: [workoutPlanRow()] })
+			.mockResolvedValueOnce({ rows: [{ exists: false }] })
 			.mockResolvedValueOnce({ rows: [workoutRow()] })
 			.mockResolvedValueOnce({ rows: [{ id: 7 }] })
 			.mockResolvedValueOnce({
@@ -192,7 +199,7 @@ describe('Workout plans HTTP contracts', () => {
 					scheduledAt: '2026-08-11T16:00:00.000Z',
 				});
 			});
-		expect(pool.query.mock.calls[2][1]).toEqual([
+		expect(pool.query.mock.calls[3][1]).toEqual([
 			7,
 			2,
 			3,
@@ -204,6 +211,7 @@ describe('Workout plans HTTP contracts', () => {
 	test('DELETE changes status to cancelled without deleting the row', async () => {
 		pool.query
 			.mockResolvedValueOnce({ rows: [workoutPlanRow()] })
+			.mockResolvedValueOnce({ rows: [{ exists: false }] })
 			.mockResolvedValueOnce({ rows: [{ id: 7 }] })
 			.mockResolvedValueOnce({
 				rows: [workoutPlanRow({ status: 'cancelled' })],
@@ -216,10 +224,10 @@ describe('Workout plans HTTP contracts', () => {
 			.expect(response => {
 				expectWorkoutPlan(response, { status: 'cancelled' });
 			});
-		expect(pool.query.mock.calls[1][0]).toContain(
+		expect(pool.query.mock.calls[2][0]).toContain(
 			"AND status = 'scheduled'",
 		);
-		expect(pool.query.mock.calls[1][0]).not.toContain('DELETE FROM');
+		expect(pool.query.mock.calls[2][0]).not.toContain('DELETE FROM');
 	});
 
 	test.each([

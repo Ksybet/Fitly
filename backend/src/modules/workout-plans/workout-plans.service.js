@@ -9,6 +9,7 @@ const {
 } = require('../../utils/request-validation');
 const { ApiError } = require('../../utils/api-error');
 const { toWorkoutPlanDto } = require('./workout-plans.mapper');
+const { withTransaction } = require('../../utils/db-transaction');
 
 const DEFAULT_REMINDER_MINUTES_BEFORE = 30;
 const MAX_REMINDER_MINUTES_BEFORE = 10080;
@@ -76,11 +77,30 @@ function normalizeReminder(value, defaultValue) {
 	return value;
 }
 
-async function ensureWorkoutAvailable(workoutId) {
-	const workout = await workoutsRepository.getActiveWorkoutById(workoutId);
+async function ensureWorkoutAvailable(workoutId, queryable) {
+	const workout = queryable
+		? await workoutsRepository.getActiveWorkoutById(
+			workoutId,
+			queryable,
+		)
+		: await workoutsRepository.getActiveWorkoutById(workoutId);
 
 	if (!workout) {
 		throw new ApiError(404, 'Workout not found');
+	}
+}
+
+async function assertNoActiveSession(client, planId) {
+	const hasActiveSession =
+		await workoutPlansRepository.hasActiveWorkoutSession(
+			client,
+			planId,
+		);
+
+	if (hasActiveSession) {
+		throw new ApiError(409, 'Workout plan has an active session', {
+			code: 'WORKOUT_PLAN_HAS_ACTIVE_SESSION',
+		});
 	}
 }
 
@@ -124,19 +144,6 @@ function assertCancellable(workoutPlan) {
 	}
 }
 
-async function getOwnedWorkoutPlan(userId, planId) {
-	const workoutPlan = await workoutPlansRepository.getWorkoutPlanById(
-		userId,
-		planId,
-	);
-
-	if (!workoutPlan) {
-		throw new ApiError(404, 'Workout plan not found');
-	}
-
-	return workoutPlan;
-}
-
 async function listWorkoutPlans(userId, filters = {}) {
 	const normalizedUserId = ensureValidUserId(userId);
 	const timezone = await getUserTimezone(normalizedUserId);
@@ -174,70 +181,79 @@ async function createWorkoutPlan(userId, input) {
 async function updateWorkoutPlan(userId, planId, input) {
 	const normalizedUserId = ensureValidUserId(userId);
 	const normalizedPlanId = normalizePositiveInteger(planId, 'planId');
-	const current = await getOwnedWorkoutPlan(
-		normalizedUserId,
-		normalizedPlanId,
-	);
-	assertEditable(current);
-
 	const workoutId = normalizePositiveInteger(input.workoutId, 'workoutId');
 	const scheduledAt = normalizeScheduledAt(input.scheduledAt);
 	const reminderMinutesBefore = normalizeReminder(
 		input.reminderMinutesBefore,
 		undefined,
 	);
-	await ensureWorkoutAvailable(workoutId);
 
-	const record = await workoutPlansRepository.updateWorkoutPlan(
-		normalizedUserId,
-		normalizedPlanId,
-		{
-			workoutId,
-			scheduledAt,
-			reminderMinutesBefore,
-		},
-	);
+	return withTransaction(async client => {
+		const current = await workoutPlansRepository
+			.getWorkoutPlanForUpdate(
+				client,
+				normalizedUserId,
+				normalizedPlanId,
+			);
+		if (!current) {
+			throw new ApiError(404, 'Workout plan not found');
+		}
+		assertEditable(current);
+		await assertNoActiveSession(client, normalizedPlanId);
+		await ensureWorkoutAvailable(workoutId, client);
 
-	if (!record) {
-		const latest = await getOwnedWorkoutPlan(
+		const record = await workoutPlansRepository.updateWorkoutPlan(
 			normalizedUserId,
 			normalizedPlanId,
+			{
+				workoutId,
+				scheduledAt,
+				reminderMinutesBefore,
+			},
+			client,
 		);
-		assertEditable(latest);
-		throw new ApiError(409, 'Workout plan is not editable', {
-			code: 'WORKOUT_PLAN_NOT_EDITABLE',
-		});
-	}
 
-	return toWorkoutPlanDto(record);
+		if (!record) {
+			throw new ApiError(409, 'Workout plan is not editable', {
+				code: 'WORKOUT_PLAN_NOT_EDITABLE',
+			});
+		}
+
+		return toWorkoutPlanDto(record);
+	});
 }
 
 async function cancelWorkoutPlan(userId, planId) {
 	const normalizedUserId = ensureValidUserId(userId);
 	const normalizedPlanId = normalizePositiveInteger(planId, 'planId');
-	const current = await getOwnedWorkoutPlan(
-		normalizedUserId,
-		normalizedPlanId,
-	);
-	assertCancellable(current);
 
-	const record = await workoutPlansRepository.cancelWorkoutPlan(
-		normalizedUserId,
-		normalizedPlanId,
-	);
+	return withTransaction(async client => {
+		const current = await workoutPlansRepository
+			.getWorkoutPlanForUpdate(
+				client,
+				normalizedUserId,
+				normalizedPlanId,
+			);
+		if (!current) {
+			throw new ApiError(404, 'Workout plan not found');
+		}
+		assertCancellable(current);
+		await assertNoActiveSession(client, normalizedPlanId);
 
-	if (!record) {
-		const latest = await getOwnedWorkoutPlan(
+		const record = await workoutPlansRepository.cancelWorkoutPlan(
 			normalizedUserId,
 			normalizedPlanId,
+			client,
 		);
-		assertCancellable(latest);
-		throw new ApiError(409, 'Workout plan cannot be cancelled', {
-			code: 'WORKOUT_PLAN_NOT_EDITABLE',
-		});
-	}
 
-	return toWorkoutPlanDto(record);
+		if (!record) {
+			throw new ApiError(409, 'Workout plan cannot be cancelled', {
+				code: 'WORKOUT_PLAN_NOT_EDITABLE',
+			});
+		}
+
+		return toWorkoutPlanDto(record);
+	});
 }
 
 module.exports = {
