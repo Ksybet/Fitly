@@ -1832,6 +1832,11 @@ paths:
       summary: Начать тренировочную сессию
       description: У пользователя может быть только одна активная сессия.
       x-requirements: [FR-703, FITLY-043]
+      x-error-codes:
+        - ACTIVE_WORKOUT_SESSION_EXISTS
+        - WORKOUT_PLAN_NOT_SCHEDULED
+        - WORKOUT_PLAN_WORKOUT_MISMATCH
+        - WORKOUT_PLAN_SESSION_EXISTS
       requestBody:
         required: true
         content:
@@ -1853,6 +1858,10 @@ paths:
                         $ref: '#/components/schemas/WorkoutSession'
         '400':
           $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
 
@@ -1877,6 +1886,8 @@ paths:
                         allOf:
                           - $ref: '#/components/schemas/WorkoutSession'
                         nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/workout-sessions/{sessionId}:
     parameters:
@@ -1898,6 +1909,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -1909,6 +1924,7 @@ paths:
       operationId: pauseWorkoutSession
       summary: Приостановить таймер
       x-requirements: [FITLY-043]
+      x-error-codes: [WORKOUT_SESSION_NOT_PAUSABLE]
       responses:
         '200':
           description: Приостановленная сессия
@@ -1922,6 +1938,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1935,6 +1955,7 @@ paths:
       operationId: resumeWorkoutSession
       summary: Продолжить таймер
       x-requirements: [FITLY-043]
+      x-error-codes: [WORKOUT_SESSION_NOT_RESUMABLE]
       responses:
         '200':
           description: Продолженная сессия
@@ -1948,6 +1969,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1961,6 +1986,10 @@ paths:
       operationId: finishWorkoutSession
       summary: Завершить тренировку и сохранить результат
       x-requirements: [FR-703, FITLY-043, FITLY-044]
+      x-error-codes:
+        - WORKOUT_SESSION_ALREADY_COMPLETED
+        - WORKOUT_SESSION_CANCELLED
+        - WORKOUT_PLAN_NOT_SCHEDULED
       requestBody:
         required: false
         content:
@@ -1969,7 +1998,7 @@ paths:
               $ref: '#/components/schemas/FinishWorkoutSessionRequest'
       responses:
         '200':
-          description: Завершённая сессия; достижения и аналитика пересчитаны
+          description: Завершённая тренировочная сессия
           content:
             application/json:
               schema:
@@ -1980,6 +2009,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1992,6 +2025,9 @@ paths:
       tags: [Workouts]
       operationId: cancelWorkoutSession
       summary: Отменить активную сессию
+      x-error-codes:
+        - WORKOUT_SESSION_ALREADY_COMPLETED
+        - WORKOUT_SESSION_ALREADY_CANCELLED
       responses:
         '200':
           description: Отменённая сессия
@@ -2005,6 +2041,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -3966,6 +4006,7 @@ components:
         type: integer
         format: int64
         minimum: 1
+        maximum: 2147483647
     PlanId:
       name: planId
       in: path
@@ -5370,29 +5411,37 @@ components:
           type: integer
           format: int64
           minimum: 1
+          maximum: 2147483647
         workoutPlanId:
           type: integer
           format: int64
           minimum: 1
+          maximum: 2147483647
           nullable: true
-    ExerciseResult:
+    WorkoutSessionExerciseResult:
       type: object
+      additionalProperties: false
       required: [exerciseId, completed]
       properties:
         exerciseId:
           type: integer
           format: int64
+          minimum: 1
+          maximum: 2147483647
         completed:
           type: boolean
         setsCompleted:
           type: integer
           minimum: 0
+          maximum: 100
         repetitionsCompleted:
           type: integer
           minimum: 0
+          maximum: 10000
         durationSeconds:
           type: integer
           minimum: 0
+          maximum: 86400
     FinishWorkoutSessionRequest:
       type: object
       additionalProperties: false
@@ -5402,17 +5451,33 @@ components:
           format: float
           minimum: 0
           maximum: 5000
-          description: Если не передано, сервер использует оценку программы.
+          description: Фактическое значение от клиента; если не передано, сохраняется `null`.
         exerciseResults:
           type: array
           maxItems: 100
           items:
-            $ref: '#/components/schemas/ExerciseResult'
+            $ref: '#/components/schemas/WorkoutSessionExerciseResult'
     WorkoutSession:
       type: object
-      required: [id, workout, status, startedAt, elapsedSeconds, caloriesBurned, exerciseResults, createdAt, updatedAt]
+      required:
+        - id
+        - workoutId
+        - workoutPlanId
+        - workout
+        - status
+        - startedAt
+        - pausedAt
+        - finishedAt
+        - elapsedSeconds
+        - caloriesBurned
+        - exerciseResults
+        - createdAt
+        - updatedAt
       properties:
         id:
+          type: integer
+          format: int64
+        workoutId:
           type: integer
           format: int64
         workout:
@@ -5442,10 +5507,12 @@ components:
           type: number
           format: float
           minimum: 0
+          maximum: 5000
+          nullable: true
         exerciseResults:
           type: array
           items:
-            $ref: '#/components/schemas/ExerciseResult'
+            $ref: '#/components/schemas/WorkoutSessionExerciseResult'
         createdAt:
           type: string
           format: date-time

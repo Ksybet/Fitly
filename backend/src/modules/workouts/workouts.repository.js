@@ -63,8 +63,8 @@ async function listActiveWorkouts(filters) {
 	};
 }
 
-async function getActiveWorkoutById(workoutId) {
-	const result = await pool.query(
+async function getActiveWorkoutById(workoutId, queryable = pool) {
+	const result = await queryable.query(
 		`SELECT ${workoutColumns}
 		 FROM workouts
 		 WHERE id = $1
