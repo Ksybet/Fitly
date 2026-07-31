@@ -10,6 +10,7 @@ const appTables = [
 	'user_settings',
 	'weight_entries',
 	'workout_exercises',
+	'workout_plans',
 	'workouts',
 	'favorites',
 	'daily_tracking',
@@ -65,7 +66,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(14);
+		expect(cascadeResult.rows[0].count).toBe(15);
 	});
 
 	test('restricts user roles and case-insensitive email uniqueness', async () => {
