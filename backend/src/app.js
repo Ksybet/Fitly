@@ -15,6 +15,8 @@ const systemRoutes = require('./modules/system/system.routes');
 const settingsRoutes = require('./modules/settings/settings.routes');
 const nutritionRoutes = require('./modules/nutrition/nutrition.routes');
 const workoutsRoutes = require('./modules/workouts/workouts.routes');
+const workoutPlansRoutes =
+	require('./modules/workout-plans/workout-plans.routes');
 
 const {
 	authMiddleware,
@@ -54,6 +56,7 @@ app.use('/api/v1/daily', dailyRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/nutrition', nutritionRoutes);
 app.use('/api/v1/workouts', workoutsRoutes);
+app.use('/api/v1/workout-plans', workoutPlansRoutes);
 app.use('/api/v1/admin', authMiddleware, requireRole('admin'));
 
 app.use((req, res, next) => {

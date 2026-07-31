@@ -2038,6 +2038,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/WorkoutPlan'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Workouts]
       operationId: createWorkoutPlan
@@ -2064,6 +2066,8 @@ paths:
                         $ref: '#/components/schemas/WorkoutPlan'
         '400':
           $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/workout-plans/{planId}:
     parameters:
@@ -2077,7 +2081,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WorkoutPlanRequest'
+              $ref: '#/components/schemas/WorkoutPlanUpdateRequest'
       responses:
         '200':
           description: План обновлён
@@ -2095,6 +2099,8 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     delete:
       tags: [Workouts]
       operationId: cancelWorkoutPlan
@@ -5466,6 +5472,24 @@ components:
           minimum: 0
           maximum: 10080
           default: 30
+          description: По умолчанию при создании напоминание за 30 минут.
+    WorkoutPlanUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [workoutId, scheduledAt]
+      properties:
+        workoutId:
+          type: integer
+          format: int64
+          minimum: 1
+        scheduledAt:
+          type: string
+          format: date-time
+        reminderMinutesBefore:
+          type: integer
+          minimum: 0
+          maximum: 10080
+          description: Если не передано, текущее значение плана сохраняется.
     WorkoutPlan:
       allOf:
         - $ref: '#/components/schemas/WorkoutPlanRequest'
