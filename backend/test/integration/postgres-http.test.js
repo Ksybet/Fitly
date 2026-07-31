@@ -17,13 +17,19 @@ const appTables = [
 	'mood_entries',
 	'sleep_entries',
 	'water_entries',
+	'workout_session_exercise_results',
+	'workout_sessions',
 	'goals',
 	'profiles',
 	'users',
 ];
 
 const userDataTables = appTables.filter(table => (
-	!['exercises', 'workout_exercises', 'workouts'].includes(table)
+	![
+		'exercises',
+		'workout_exercises',
+		'workouts',
+	].includes(table)
 ));
 
 function expectTestDatabase(databaseName) {
@@ -66,7 +72,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(15);
+		expect(cascadeResult.rows[0].count).toBe(17);
 	});
 
 	test('restricts user roles and case-insensitive email uniqueness', async () => {
