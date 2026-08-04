@@ -1801,6 +1801,10 @@ paths:
       tags: [Workouts]
       operationId: listWorkoutSessions
       summary: Получить журнал тренировок
+      description: |
+        Возвращает только сессии текущего пользователя. Параметры `from` и `to`
+        фильтруют локальную дату `startedAt` включительно в часовом поясе
+        пользователя.
       x-requirements: [FR-703, FR-1001, FITLY-043, FITLY-044]
       parameters:
         - $ref: '#/components/parameters/FromDate'
@@ -1826,6 +1830,10 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/WorkoutSession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [Workouts]
       operationId: startWorkoutSession
@@ -2438,6 +2446,12 @@ paths:
       tags: [Analytics]
       operationId: getActivityAnalytics
       summary: Получить шаги, тренировки и сожжённые калории
+      description: |
+        Возвращает активность от начала выбранного календарного периода до
+        `endDate` включительно: с понедельника для `week`, с первого числа для
+        `month` и с 1 января для `year`. Завершённые тренировки относятся к
+        локальной дате `finishedAt` в часовом поясе пользователя. `points`
+        содержит каждый день диапазона, включая дни с нулевыми значениями.
       x-requirements: [FR-1001, FR-1004, FITLY-044, FITLY-048]
       parameters:
         - $ref: '#/components/parameters/Period'
@@ -2455,6 +2469,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/ActivityAnalytics'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/analytics/sleep:
     get:
@@ -5451,7 +5469,10 @@ components:
           format: float
           minimum: 0
           maximum: 5000
-          description: Фактическое значение от клиента; если не передано, сохраняется `null`.
+          description: |
+            Фактическое значение от клиента. Если значение не передано, сервер
+            вычисляет его пропорционально фактической продолжительности и
+            `workout.estimatedCalories`, округляет до целого и ограничивает 5000.
         exerciseResults:
           type: array
           maxItems: 100
@@ -5789,6 +5810,7 @@ components:
     AnalyticsPeriod:
       type: string
       enum: [week, month, year]
+      description: Календарный период к указанной конечной дате включительно.
     TimeSeriesPoint:
       type: object
       required: [date, value]
@@ -5895,7 +5917,10 @@ components:
           minimum: 0
         points:
           type: array
-          description: '`value` — шаги, `secondaryValue` — минуты тренировок.'
+          description: |
+            По одной точке на каждый день диапазона, включая пустые дни;
+            `value` — шаги, `secondaryValue` — полные минуты завершённых
+            тренировок по локальной дате `finishedAt`.
           items:
             $ref: '#/components/schemas/TimeSeriesPoint'
     SleepAnalytics:

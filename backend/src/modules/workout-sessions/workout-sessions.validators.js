@@ -5,6 +5,19 @@ const {
 } = require('../../utils/request-validation');
 
 const MAX_SQL_INT = 2147483647;
+const WORKOUT_SESSION_STATUSES = new Set([
+	'in_progress',
+	'paused',
+	'completed',
+	'cancelled',
+]);
+const LIST_QUERY_FIELDS = new Set([
+	'from',
+	'to',
+	'status',
+	'page',
+	'pageSize',
+]);
 const START_FIELDS = new Set(['workoutId', 'workoutPlanId']);
 const FINISH_FIELDS = new Set(['caloriesBurned', 'exerciseResults']);
 const EXERCISE_RESULT_FIELDS = new Set([
@@ -23,6 +36,118 @@ function isPositiveSqlInteger(value) {
 	return Number.isInteger(value)
 		&& value >= 1
 		&& value <= MAX_SQL_INT;
+}
+
+function isValidDate(value) {
+	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+		return false;
+	}
+
+	const [year, month, day] = value.split('-').map(Number);
+	const date = new Date(Date.UTC(year, month - 1, day));
+
+	return date.getUTCFullYear() === year
+		&& date.getUTCMonth() === month - 1
+		&& date.getUTCDate() === day;
+}
+
+function parsePositiveInteger(value, field, defaultValue, maximum, details) {
+	if (value === undefined) {
+		return defaultValue;
+	}
+
+	if (
+		typeof value !== 'string'
+		|| !/^[1-9]\d*$/.test(value)
+		|| Number(value) > maximum
+	) {
+		addDetail(
+			details,
+			field,
+			'OUT_OF_RANGE',
+			`${field} must be an integer between 1 and ${maximum}`,
+		);
+		return defaultValue;
+	}
+
+	return Number(value);
+}
+
+function validateWorkoutSessionListQuery(req, res, next) {
+	const details = [];
+	let from;
+	let to;
+	let status;
+
+	for (const field of Object.keys(req.query)) {
+		if (!LIST_QUERY_FIELDS.has(field)) {
+			addDetail(details, field, 'UNKNOWN_FIELD', `${field} is not allowed`);
+		}
+	}
+
+	for (const field of ['from', 'to']) {
+		if (req.query[field] !== undefined) {
+			if (!isValidDate(req.query[field])) {
+				addDetail(
+					details,
+					field,
+					'INVALID_DATE',
+					`${field} must be a valid date in YYYY-MM-DD format`,
+				);
+			} else if (field === 'from') {
+				from = req.query[field];
+			} else {
+				to = req.query[field];
+			}
+		}
+	}
+
+	if (from && to && from > to) {
+		addDetail(
+			details,
+			'to',
+			'INVALID_RANGE',
+			'to must be greater than or equal to from',
+		);
+	}
+
+	if (req.query.status !== undefined) {
+		if (
+			typeof req.query.status !== 'string'
+			|| !WORKOUT_SESSION_STATUSES.has(req.query.status)
+		) {
+			addDetail(
+				details,
+				'status',
+				'INVALID_ENUM',
+				'status has an unsupported value',
+			);
+		} else {
+			status = req.query.status;
+		}
+	}
+
+	const page = parsePositiveInteger(
+		req.query.page,
+		'page',
+		1,
+		MAX_SQL_INT,
+		details,
+	);
+	const pageSize = parsePositiveInteger(
+		req.query.pageSize,
+		'pageSize',
+		20,
+		100,
+		details,
+	);
+
+	if (details.length > 0) {
+		return next(validationFailed(details));
+	}
+
+	req.workoutSessionQuery = { from, to, status, page, pageSize };
+	return next();
 }
 
 function validateWorkoutSessionId(req, res, next) {
@@ -230,6 +355,8 @@ function validateFinishWorkoutSession(req, res, next) {
 }
 
 module.exports = {
+	WORKOUT_SESSION_STATUSES,
+	validateWorkoutSessionListQuery,
 	validateWorkoutSessionId,
 	validateStartWorkoutSession,
 	validateFinishWorkoutSession,

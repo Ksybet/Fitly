@@ -1,6 +1,7 @@
 jest.mock(
 	'../../src/modules/workout-sessions/workout-sessions.repository',
 	() => ({
+		listSessions: jest.fn(),
 		findActiveSessionByUserId: jest.fn(),
 		findSessionById: jest.fn(),
 		findSessionForUpdate: jest.fn(),
@@ -23,6 +24,10 @@ jest.mock(
 	'../../src/modules/workout-sessions/workout-session-clock',
 	() => ({ now: jest.fn() }),
 );
+jest.mock(
+	'../../src/modules/settings/user-local-date.service',
+	() => ({ getUserTimezone: jest.fn() }),
+);
 const mockTransactionClient = { query: jest.fn() };
 jest.mock('../../src/utils/db-transaction', () => ({
 	withTransaction: jest.fn(callback => callback(mockTransactionClient)),
@@ -34,6 +39,8 @@ const workoutsRepository =
 	require('../../src/modules/workouts/workouts.repository');
 const clock =
 	require('../../src/modules/workout-sessions/workout-session-clock');
+const localDateService =
+	require('../../src/modules/settings/user-local-date.service');
 const service =
 	require('../../src/modules/workout-sessions/workout-sessions.service');
 
@@ -72,6 +79,7 @@ describe('workout sessions service', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 		clock.now.mockReturnValue(tenOClock);
+		localDateService.getUserTimezone.mockResolvedValue('Europe/Moscow');
 		workoutsRepository.getActiveWorkoutById.mockResolvedValue({ id: 3 });
 		repository.findActiveSessionByUserId.mockResolvedValue(null);
 		repository.createSession.mockResolvedValue(sessionRow());
@@ -206,6 +214,38 @@ describe('workout sessions service', () => {
 		await expect(service.getActiveWorkoutSession(2)).resolves.toBeNull();
 	});
 
+	test('lists owned sessions with normalized pagination', async () => {
+		repository.listSessions.mockResolvedValueOnce({
+			items: [sessionRow()],
+			total: 21,
+		});
+
+		await expect(service.listWorkoutSessions(2, {
+			status: 'completed',
+			page: 2,
+			pageSize: 10,
+		})).resolves.toMatchObject({
+			items: [expect.objectContaining({ id: 5 })],
+			meta: {
+				page: 2,
+				pageSize: 10,
+				total: 21,
+				totalPages: 3,
+			},
+		});
+		expect(repository.listSessions).toHaveBeenCalledWith(
+			2,
+			{
+				from: undefined,
+				to: undefined,
+				status: 'completed',
+				page: 2,
+				pageSize: 10,
+			},
+			'Europe/Moscow',
+		);
+	});
+
 	test('does not disclose a missing or foreign session', async () => {
 		repository.findSessionById.mockResolvedValueOnce(null);
 		await expect(service.getWorkoutSession(2, 99))
@@ -327,6 +367,38 @@ describe('workout sessions service', () => {
 			5,
 			exerciseResults,
 		);
+	});
+
+	test('calculates and stores fallback calories when omitted', async () => {
+		const finishedAt = new Date('2026-07-31T10:15:00.000Z');
+		clock.now.mockReturnValueOnce(finishedAt);
+		repository.findSessionForUpdate.mockResolvedValueOnce(sessionRow());
+		repository.findSessionById.mockResolvedValueOnce(sessionRow({
+			status: 'completed',
+			finishedAt,
+			elapsedSeconds: 900,
+			caloriesBurned: '132.00',
+		}));
+
+		await expect(service.finishWorkoutSession(2, 5)).resolves.toMatchObject({
+			caloriesBurned: 132,
+		});
+		expect(repository.finishSession).toHaveBeenCalledWith(
+			mockTransactionClient,
+			2,
+			5,
+			expect.objectContaining({
+				elapsedSeconds: 900,
+				caloriesBurned: 132,
+			}),
+		);
+	});
+
+	test('caps fallback calories at the contract maximum', () => {
+		expect(service.calculateFallbackCalories({
+			workoutEstimatedCalories: 5000,
+			workoutDurationMinutes: 5,
+		}, 600)).toBe(5000);
 	});
 
 	test('finishes a paused session and completes its plan', async () => {

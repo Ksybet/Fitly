@@ -56,6 +56,89 @@ async function attachExerciseResults(queryable, record) {
 	};
 }
 
+async function attachExerciseResultsToSessions(queryable, records) {
+	if (records.length === 0) {
+		return [];
+	}
+
+	const sessionIds = records.map(record => record.id);
+	const result = await queryable.query(
+		`SELECT
+			session_id AS "sessionId",
+			exercise_id AS "exerciseId",
+			completed,
+			sets_completed AS "setsCompleted",
+			repetitions_completed AS "repetitionsCompleted",
+			duration_seconds AS "durationSeconds"
+		 FROM workout_session_exercise_results
+		 WHERE session_id = ANY($1::integer[])
+		 ORDER BY session_id ASC, id ASC`,
+		[sessionIds],
+	);
+	const resultsBySessionId = new Map();
+
+	for (const exerciseResult of result.rows) {
+		const sessionId = Number(exerciseResult.sessionId);
+		if (!resultsBySessionId.has(sessionId)) {
+			resultsBySessionId.set(sessionId, []);
+		}
+		resultsBySessionId.get(sessionId).push(exerciseResult);
+	}
+
+	return records.map(record => ({
+		...record,
+		exerciseResults: resultsBySessionId.get(Number(record.id)) || [],
+	}));
+}
+
+async function listSessions(userId, filters, timezone) {
+	const values = [
+		userId,
+		timezone,
+		filters.from ?? null,
+		filters.to ?? null,
+		filters.status ?? null,
+	];
+	const where = `
+		ws.user_id = $1
+		AND (
+			$3::date IS NULL
+			OR ws.started_at >= ($3::date::timestamp AT TIME ZONE $2)
+		)
+		AND (
+			$4::date IS NULL
+			OR ws.started_at < (($4::date + 1)::timestamp AT TIME ZONE $2)
+		)
+		AND ($5::varchar IS NULL OR ws.status = $5)
+	`;
+	const countResult = await pool.query(
+		`SELECT COUNT(*)::integer AS total
+		 FROM workout_sessions ws
+		 WHERE ${where}`,
+		values,
+	);
+
+	values.push(filters.pageSize);
+	const limitParameter = `$${values.length}`;
+	values.push((filters.page - 1) * filters.pageSize);
+	const offsetParameter = `$${values.length}`;
+	const result = await pool.query(
+		`SELECT ${sessionColumns}
+		 FROM workout_sessions ws
+		 JOIN workouts w ON w.id = ws.workout_id
+		 WHERE ${where}
+		 ORDER BY ws.started_at DESC, ws.id DESC
+		 LIMIT ${limitParameter}
+		 OFFSET ${offsetParameter}`,
+		values,
+	);
+
+	return {
+		items: await attachExerciseResultsToSessions(pool, result.rows),
+		total: countResult.rows[0].total,
+	};
+}
+
 async function findActiveSessionByUserId(userId, queryable = pool) {
 	const result = await queryable.query(
 		`SELECT ${sessionColumns}
@@ -310,6 +393,7 @@ async function completeWorkoutPlan(
 }
 
 module.exports = {
+	listSessions,
 	findActiveSessionByUserId,
 	findSessionById,
 	findSessionForUpdate,

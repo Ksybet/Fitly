@@ -17,6 +17,18 @@ async function startWorkoutSession(req, res, next) {
 	}
 }
 
+async function listWorkoutSessions(req, res, next) {
+	try {
+		const result = await workoutSessionsService.listWorkoutSessions(
+			currentUserId(req),
+			req.workoutSessionQuery,
+		);
+		return sendSuccess(res, result.items, { meta: result.meta });
+	} catch (error) {
+		return next(error);
+	}
+}
+
 async function getActiveWorkoutSession(req, res, next) {
 	try {
 		const session = await workoutSessionsService.getActiveWorkoutSession(
@@ -90,6 +102,7 @@ async function cancelWorkoutSession(req, res, next) {
 }
 
 module.exports = {
+	listWorkoutSessions,
 	startWorkoutSession,
 	getActiveWorkoutSession,
 	getWorkoutSession,

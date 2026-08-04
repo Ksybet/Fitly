@@ -12,8 +12,13 @@ const {
 const { withTransaction } = require('../../utils/db-transaction');
 const { ensureValidUserId } = require('../../utils/validation');
 const { ApiError } = require('../../utils/api-error');
+const {
+	getUserTimezone,
+} = require('../settings/user-local-date.service');
 
 const MAX_SQL_INT = 2147483647;
+const DEFAULT_PAGE = 1;
+const DEFAULT_PAGE_SIZE = 20;
 
 function validationError(field, code, message) {
 	return new ApiError(400, 'Request validation failed', {
@@ -43,6 +48,25 @@ function normalizeWorkoutPlanId(value) {
 	}
 
 	return normalizePositiveInteger(value, 'workoutPlanId');
+}
+
+function normalizeSessionFilters(filters = {}) {
+	return {
+		from: filters.from,
+		to: filters.to,
+		status: filters.status,
+		page: filters.page ?? DEFAULT_PAGE,
+		pageSize: filters.pageSize ?? DEFAULT_PAGE_SIZE,
+	};
+}
+
+function paginationMeta(page, pageSize, total) {
+	return {
+		page,
+		pageSize,
+		total,
+		totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+	};
 }
 
 function normalizeExerciseResults(exerciseResults = []) {
@@ -261,6 +285,30 @@ async function getActiveWorkoutSession(userId) {
 		: null;
 }
 
+async function listWorkoutSessions(userId, filters = {}) {
+	const normalizedUserId = ensureValidUserId(userId);
+	const normalizedFilters = normalizeSessionFilters(filters);
+	const timezone = await getUserTimezone(normalizedUserId);
+	const result = await workoutSessionsRepository.listSessions(
+		normalizedUserId,
+		normalizedFilters,
+		timezone,
+	);
+	const currentTime = workoutSessionClock.now();
+
+	return {
+		items: result.items.map(record => toWorkoutSessionDto(
+			record,
+			currentTime,
+		)),
+		meta: paginationMeta(
+			normalizedFilters.page,
+			normalizedFilters.pageSize,
+			result.total,
+		),
+	};
+}
+
 async function getWorkoutSession(userId, sessionId) {
 	const normalizedUserId = ensureValidUserId(userId);
 	const normalizedSessionId = normalizePositiveInteger(
@@ -435,6 +483,16 @@ function completionTiming(session, completedAt) {
 	};
 }
 
+function calculateFallbackCalories(session, elapsedSeconds) {
+	const estimatedCalories = Number(session.workoutEstimatedCalories);
+	const durationSeconds = Number(session.workoutDurationMinutes) * 60;
+	const calories = Math.round(
+		estimatedCalories * elapsedSeconds / durationSeconds,
+	);
+
+	return Math.min(calories, 5000);
+}
+
 async function finishWorkoutSession(userId, sessionId, input = {}) {
 	const normalizedUserId = ensureValidUserId(userId);
 	const normalizedSessionId = normalizePositiveInteger(
@@ -458,13 +516,16 @@ async function finishWorkoutSession(userId, sessionId, input = {}) {
 
 		const finishedAt = workoutSessionClock.now();
 		const timing = completionTiming(session, finishedAt);
+		const caloriesBurned = normalizedInput.caloriesBurned === null
+			? calculateFallbackCalories(session, timing.elapsedSeconds)
+			: normalizedInput.caloriesBurned;
 		await workoutSessionsRepository.finishSession(
 			client,
 			normalizedUserId,
 			normalizedSessionId,
 			{
 				...timing,
-				caloriesBurned: normalizedInput.caloriesBurned,
+				caloriesBurned,
 			},
 		);
 		await workoutSessionsRepository.insertExerciseResults(
@@ -547,12 +608,18 @@ async function cancelWorkoutSession(userId, sessionId) {
 }
 
 module.exports = {
+	DEFAULT_PAGE,
+	DEFAULT_PAGE_SIZE,
 	normalizeExerciseResults,
 	normalizeFinishInput,
+	normalizeSessionFilters,
+	paginationMeta,
+	calculateFallbackCalories,
 	assertPlanCanStart,
 	assertFinishable,
 	assertCancellable,
 	startWorkoutSession,
+	listWorkoutSessions,
 	getActiveWorkoutSession,
 	getWorkoutSession,
 	pauseWorkoutSession,
