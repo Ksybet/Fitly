@@ -1,0 +1,125 @@
+name: Backend CI/CD
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/backend-ci-cd.yml"
+
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "deploy/**"
+      - ".github/workflows/backend-ci-cd.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      POSTGRES_USER: fitly_test
+      POSTGRES_PASSWORD: fitly_test_password
+      POSTGRES_DB: fitly_test
+      DATABASE_URL: postgres://fitly_test:fitly_test_password@postgres:5432/fitly_test
+
+      NODE_ENV: test
+      HOST: 0.0.0.0
+      PORT: 3000
+
+      JWT_SECRET: ci_only_jwt_secret_with_at_least_32_characters
+      CLIENT_URL: http://localhost:3000
+
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: FitlyTestAdminPassword123!
+      TRUST_PROXY_HOPS: 1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run backend tests
+        working-directory: backend
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f compose.test.yaml \
+            up \
+            --build \
+            --abort-on-container-exit \
+            --exit-code-from api
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: backend
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f compose.test.yaml \
+            logs --no-color
+
+      - name: Clean up containers
+        if: always()
+        working-directory: backend
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f compose.test.yaml \
+            down --volumes --remove-orphans
+
+  deploy:
+    name: Deploy production
+    needs: test
+
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main'
+      )
+
+    concurrency:
+      group: fitly-production
+      cancel-in-progress: false
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy backend
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+        run: |
+          ssh \
+            -i ~/.ssh/deploy_key \
+            -p "$DEPLOY_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST"
