@@ -1,5 +1,9 @@
 jest.mock('../../src/modules/analytics/analytics.repository', () => ({
+	getWeightEntries: jest.fn(),
+	getLatestWeight: jest.fn(),
+	getProfileHeight: jest.fn(),
 	getDailyActivity: jest.fn(),
+	getSleepEntries: jest.fn(),
 }));
 jest.mock(
 	'../../src/modules/settings/user-local-date.service',
@@ -98,5 +102,112 @@ describe('analytics service', () => {
 			},
 			'Europe/Moscow',
 		);
+	});
+
+	test('builds weight analytics and calculates BMI and change', async () => {
+		analyticsRepository.getWeightEntries.mockResolvedValue([
+			{ date: '2026-07-01', weightKg: 79.6 },
+			{ date: '2026-07-31', weightKg: 78.4 },
+		]);
+		analyticsRepository.getLatestWeight.mockResolvedValue(78.4);
+		analyticsRepository.getProfileHeight.mockResolvedValue(182);
+
+		await expect(analyticsService.getWeightAnalytics(7, {
+			period: 'month',
+			endDate: '2026-07-31',
+		})).resolves.toEqual({
+			range: {
+				period: 'month',
+				from: '2026-07-01',
+				to: '2026-07-31',
+			},
+			currentWeightKg: 78.4,
+			changeKg: -1.2,
+			bmi: 23.67,
+			points: [
+				{ date: '2026-07-01', value: 79.6 },
+				{ date: '2026-07-31', value: 78.4 },
+			],
+		});
+		expect(analyticsRepository.getLatestWeight)
+			.toHaveBeenCalledWith(7, '2026-07-31');
+	});
+
+	test('returns no weight change for a single period entry', async () => {
+		analyticsRepository.getWeightEntries.mockResolvedValue([
+			{ date: '2026-07-31', weightKg: 70 },
+		]);
+		analyticsRepository.getLatestWeight.mockResolvedValue(70);
+		analyticsRepository.getProfileHeight.mockResolvedValue(170);
+
+		const result = await analyticsService.getWeightAnalytics(7, {
+			period: 'week',
+			endDate: '2026-07-31',
+		});
+
+		expect(result.changeKg).toBeNull();
+	});
+
+	test.each([
+		[null, 180],
+		[70, null],
+	])('returns null BMI for weight %p and height %p', async (
+		latestWeight,
+		heightCm,
+	) => {
+		analyticsRepository.getWeightEntries.mockResolvedValue([]);
+		analyticsRepository.getLatestWeight.mockResolvedValue(latestWeight);
+		analyticsRepository.getProfileHeight.mockResolvedValue(heightCm);
+
+		const result = await analyticsService.getWeightAnalytics(7, {
+			period: 'week',
+			endDate: '2026-07-31',
+		});
+
+		expect(result.bmi).toBeNull();
+	});
+
+	test('returns nullable sleep averages for an empty period', async () => {
+		analyticsRepository.getSleepEntries.mockResolvedValue([]);
+
+		await expect(analyticsService.getSleepAnalytics(7, {
+			period: 'week',
+			endDate: '2026-07-31',
+		})).resolves.toEqual({
+			range: {
+				period: 'week',
+				from: '2026-07-27',
+				to: '2026-07-31',
+			},
+			averageDurationMinutes: null,
+			averageQuality: null,
+			points: [],
+		});
+	});
+
+	test('rounds sleep points and averages to the documented precision', async () => {
+		analyticsRepository.getSleepEntries.mockResolvedValue([
+			{ date: '2026-07-29', durationMinutes: 470.4, quality: 4 },
+			{ date: '2026-07-30', durationMinutes: 439.4, quality: 4 },
+			{ date: '2026-07-31', durationMinutes: 455.2, quality: 5 },
+		]);
+
+		await expect(analyticsService.getSleepAnalytics(7, {
+			period: 'week',
+			endDate: '2026-07-31',
+		})).resolves.toEqual({
+			range: {
+				period: 'week',
+				from: '2026-07-27',
+				to: '2026-07-31',
+			},
+			averageDurationMinutes: 455,
+			averageQuality: 4.3,
+			points: [
+				{ date: '2026-07-29', value: 470, secondaryValue: 4 },
+				{ date: '2026-07-30', value: 439, secondaryValue: 4 },
+				{ date: '2026-07-31', value: 455, secondaryValue: 5 },
+			],
+		});
 	});
 });

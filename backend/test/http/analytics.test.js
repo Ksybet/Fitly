@@ -1,5 +1,7 @@
 jest.mock('../../src/modules/analytics/analytics.service', () => ({
+	getWeightAnalytics: jest.fn(),
 	getActivityAnalytics: jest.fn(),
+	getSleepAnalytics: jest.fn(),
 }));
 
 const jwt = require('jsonwebtoken');
@@ -15,7 +17,7 @@ function authorization(userId = 2) {
 	)}`;
 }
 
-describe('Activity analytics HTTP contract', () => {
+describe('Analytics HTTP contracts', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
 	});
@@ -55,13 +57,67 @@ describe('Activity analytics HTTP contract', () => {
 	});
 
 	test.each([
-		['', 'period', 'REQUIRED'],
-		['?period=quarter', 'period', 'INVALID_ENUM'],
-		['?period=week&endDate=2026-02-30', 'endDate', 'INVALID_DATE'],
-		['?period=week&extra=true', 'extra', 'UNKNOWN_FIELD'],
-	])('rejects invalid query %s', async (query, field, code) => {
+		[
+			'weight',
+			'getWeightAnalytics',
+			{
+				range: {
+					period: 'month',
+					from: '2026-07-01',
+					to: '2026-07-31',
+				},
+				currentWeightKg: 78.4,
+				changeKg: -1.2,
+				bmi: 23.67,
+				points: [],
+			},
+		],
+		[
+			'sleep',
+			'getSleepAnalytics',
+			{
+				range: {
+					period: 'month',
+					from: '2026-07-01',
+					to: '2026-07-31',
+				},
+				averageDurationMinutes: 455,
+				averageQuality: 4.2,
+				points: [],
+			},
+		],
+	])('returns the documented %s envelope', async (
+		endpoint,
+		serviceMethod,
+		data,
+	) => {
+		analyticsService[serviceMethod].mockResolvedValue(data);
+
 		await request(app)
-			.get(`/api/v1/analytics/activity${query}`)
+			.get(`/api/v1/analytics/${endpoint}?period=month&endDate=2026-07-31`)
+			.set('Authorization', authorization())
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual(data);
+				expect(response.body.meta.requestId).toMatch(
+					/^req_[0-9a-f]{32}$/,
+				);
+			});
+
+		expect(analyticsService[serviceMethod]).toHaveBeenCalledWith(
+			2,
+			{ period: 'month', endDate: '2026-07-31' },
+		);
+	});
+
+	test.each([
+		['weight', '', 'period', 'REQUIRED'],
+		['activity', '?period=quarter', 'period', 'INVALID_ENUM'],
+		['sleep', '?period=week&endDate=2026-02-30', 'endDate', 'INVALID_DATE'],
+		['weight', '?period=week&extra=true', 'extra', 'UNKNOWN_FIELD'],
+	])('rejects invalid %s query %s', async (endpoint, query, field, code) => {
+		await request(app)
+			.get(`/api/v1/analytics/${endpoint}${query}`)
 			.set('Authorization', authorization())
 			.expect(400)
 			.expect(response => {
@@ -72,13 +128,17 @@ describe('Activity analytics HTTP contract', () => {
 					]),
 				);
 			});
+		expect(analyticsService.getWeightAnalytics).not.toHaveBeenCalled();
 		expect(analyticsService.getActivityAnalytics).not.toHaveBeenCalled();
+		expect(analyticsService.getSleepAnalytics).not.toHaveBeenCalled();
 	});
 
-	test('requires authentication', async () => {
-		await request(app)
-			.get('/api/v1/analytics/activity?period=week')
-			.expect(401);
-		expect(analyticsService.getActivityAnalytics).not.toHaveBeenCalled();
-	});
+	test.each(['weight', 'activity', 'sleep'])(
+		'requires authentication for %s analytics',
+		async endpoint => {
+			await request(app)
+				.get(`/api/v1/analytics/${endpoint}?period=week`)
+				.expect(401);
+		},
+	);
 });

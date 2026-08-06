@@ -1,5 +1,45 @@
 const { pool } = require('../../config/db');
 
+async function getWeightEntries(userId, range) {
+	const result = await pool.query(
+		`SELECT
+			entry_date::text AS date,
+			weight_kg::double precision AS "weightKg"
+		 FROM weight_entries
+		 WHERE user_id = $1
+		   AND entry_date BETWEEN $2::date AND $3::date
+		 ORDER BY entry_date ASC, id ASC`,
+		[userId, range.from, range.to],
+	);
+
+	return result.rows;
+}
+
+async function getLatestWeight(userId, endDate) {
+	const result = await pool.query(
+		`SELECT weight_kg::double precision AS "weightKg"
+		 FROM weight_entries
+		 WHERE user_id = $1
+		   AND entry_date <= $2::date
+		 ORDER BY entry_date DESC, id DESC
+		 LIMIT 1`,
+		[userId, endDate],
+	);
+
+	return result.rows[0]?.weightKg ?? null;
+}
+
+async function getProfileHeight(userId) {
+	const result = await pool.query(
+		`SELECT height_cm::double precision AS "heightCm"
+		 FROM profiles
+		 WHERE user_id = $1`,
+		[userId],
+	);
+
+	return result.rows[0]?.heightCm ?? null;
+}
+
 async function getDailyActivity(userId, range, timezone) {
 	const result = await pool.query(
 		`WITH date_series AS (
@@ -50,6 +90,28 @@ async function getDailyActivity(userId, range, timezone) {
 	return result.rows;
 }
 
+async function getSleepEntries(userId, range) {
+	const result = await pool.query(
+		`SELECT
+			sleep_date::text AS date,
+			(
+				EXTRACT(EPOCH FROM (sleep_end - sleep_start)) / 60
+			)::double precision AS "durationMinutes",
+			sleep_quality::integer AS quality
+		 FROM sleep_entries
+		 WHERE user_id = $1
+		   AND sleep_date BETWEEN $2::date AND $3::date
+		 ORDER BY sleep_date ASC, id ASC`,
+		[userId, range.from, range.to],
+	);
+
+	return result.rows;
+}
+
 module.exports = {
+	getWeightEntries,
+	getLatestWeight,
+	getProfileHeight,
 	getDailyActivity,
+	getSleepEntries,
 };
