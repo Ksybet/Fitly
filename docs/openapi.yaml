@@ -2431,6 +2431,10 @@ paths:
       tags: [Analytics]
       operationId: getWeightAnalytics
       summary: Получить динамику веса и ИМТ
+      description: |
+        Возвращает записи веса внутри выбранного календарного периода.
+        `currentWeightKg` и `bmi` рассчитываются по последней записи не позднее
+        `endDate`, даже если эта запись находится до начала периода.
       x-requirements: [FR-1003, FR-1006, FITLY-048]
       parameters:
         - $ref: '#/components/parameters/Period'
@@ -2448,6 +2452,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WeightAnalytics'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/analytics/activity:
     get:
@@ -2487,6 +2495,9 @@ paths:
       tags: [Analytics]
       operationId: getSleepAnalytics
       summary: Получить отчёт о длительности и качестве сна
+      description: |
+        Возвращает только дни с записями сна. Средние значения рассчитываются
+        по существующим записям внутри выбранного календарного периода.
       x-requirements: [FR-1005, FITLY-048]
       parameters:
         - $ref: '#/components/parameters/Period'
@@ -2504,6 +2515,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/SleepAnalytics'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/analytics/nutrition:
     get:
@@ -5831,6 +5846,22 @@ components:
         secondaryValue:
           type: number
           nullable: true
+    ActivityPoint:
+      type: object
+      required: [date, steps, workoutMinutes, caloriesBurned]
+      properties:
+        date:
+          type: string
+          format: date
+        steps:
+          type: integer
+          minimum: 0
+        workoutMinutes:
+          type: integer
+          minimum: 0
+        caloriesBurned:
+          type: number
+          minimum: 0
     PeriodRange:
       type: object
       required: [period, from, to]
@@ -5895,7 +5926,7 @@ components:
           nullable: true
     WeightAnalytics:
       type: object
-      required: [range, points]
+      required: [range, currentWeightKg, changeKg, bmi, points]
       properties:
         range:
           $ref: '#/components/schemas/PeriodRange'
@@ -5927,10 +5958,11 @@ components:
           type: array
           description: |
             По одной точке на каждый день диапазона, включая пустые дни;
-            `value` — шаги, `secondaryValue` — полные минуты завершённых
-            тренировок по локальной дате `finishedAt`.
+            `steps` — шаги, `workoutMinutes` — полные минуты и
+            `caloriesBurned` — калории завершённых тренировок по локальной
+            дате `finishedAt`.
           items:
-            $ref: '#/components/schemas/TimeSeriesPoint'
+            $ref: '#/components/schemas/ActivityPoint'
     SleepAnalytics:
       type: object
       required: [range, averageDurationMinutes, averageQuality, points]
@@ -5945,7 +5977,9 @@ components:
           nullable: true
         points:
           type: array
-          description: '`value` — минуты, `secondaryValue` — качество 1–5.'
+          description: |
+            `value` — длительность, округлённая до целой минуты;
+            `secondaryValue` — качество 1–5.
           items:
             $ref: '#/components/schemas/TimeSeriesPoint'
     NutritionAnalytics:

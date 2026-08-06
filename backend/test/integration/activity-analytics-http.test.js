@@ -87,6 +87,9 @@ describe('Activity analytics PostgreSQL HTTP contracts', () => {
 				workout_sessions,
 				workout_plans,
 				daily_tracking,
+				weight_entries,
+				sleep_entries,
+				profiles,
 				user_settings,
 				users
 			 RESTART IDENTITY CASCADE`,
@@ -127,11 +130,36 @@ describe('Activity analytics PostgreSQL HTTP contracts', () => {
 					},
 					totalSteps: 0,
 					points: [
-						{ date: '2026-07-27', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-28', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-29', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-30', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-31', value: 0, secondaryValue: 0 },
+						{
+							date: '2026-07-27',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-28',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-29',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-30',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-31',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
 					],
 				});
 			});
@@ -196,13 +224,15 @@ describe('Activity analytics PostgreSQL HTTP contracts', () => {
 				expect(response.body.data.totalSteps).toBe(300);
 				expect(response.body.data.points[29]).toEqual({
 					date: '2026-07-30',
-					value: 100,
-					secondaryValue: 0,
+					steps: 100,
+					workoutMinutes: 0,
+					caloriesBurned: 10.5,
 				});
 				expect(response.body.data.points[30]).toEqual({
 					date: '2026-07-31',
-					value: 200,
-					secondaryValue: 1,
+					steps: 200,
+					workoutMinutes: 1,
+					caloriesBurned: 20,
 				});
 			});
 	});
@@ -245,6 +275,138 @@ describe('Activity analytics PostgreSQL HTTP contracts', () => {
 						.toBe(expectedCount);
 				});
 		}
+	});
+
+	test('returns weight history, latest weight before endDate and dynamic BMI', async () => {
+		const userId = await createUser('analytics-weight@example.com');
+		const foreignUserId = await createUser(
+			'analytics-weight-foreign@example.com',
+		);
+		await pool.query(
+			`INSERT INTO profiles (user_id, height_cm)
+			 VALUES ($1, 182), ($2, 190)`,
+			[userId, foreignUserId],
+		);
+		await pool.query(
+			`INSERT INTO weight_entries (user_id, entry_date, weight_kg)
+			 VALUES
+				($1, DATE '2026-06-20', 81),
+				($1, DATE '2026-07-01', 79.6),
+				($1, DATE '2026-07-31', 78.4),
+				($1, DATE '2026-08-01', 77.5),
+				($2, DATE '2026-07-31', 99)`,
+			[userId, foreignUserId],
+		);
+
+		await request(app)
+			.get('/api/v1/analytics/weight?period=month&endDate=2026-07-31')
+			.set('Authorization', authorization(userId))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({
+					range: {
+						period: 'month',
+						from: '2026-07-01',
+						to: '2026-07-31',
+					},
+					currentWeightKg: 78.4,
+					changeKg: -1.2,
+					bmi: 23.67,
+					points: [
+						{ date: '2026-07-01', value: 79.6 },
+						{ date: '2026-07-31', value: 78.4 },
+					],
+				});
+			});
+
+		await request(app)
+			.get('/api/v1/analytics/weight?period=week&endDate=2026-07-30')
+			.set('Authorization', authorization(userId))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.currentWeightKg).toBe(79.6);
+				expect(response.body.data.points).toEqual([]);
+			});
+	});
+
+	test('returns nullable weight values when no weight has been recorded', async () => {
+		const userId = await createUser('analytics-no-weight@example.com');
+		await pool.query(
+			'INSERT INTO profiles (user_id, height_cm) VALUES ($1, 175)',
+			[userId],
+		);
+
+		await request(app)
+			.get('/api/v1/analytics/weight?period=week&endDate=2026-07-31')
+			.set('Authorization', authorization(userId))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toMatchObject({
+					currentWeightKg: null,
+					changeKg: null,
+					bmi: null,
+					points: [],
+				});
+			});
+	});
+
+	test('calculates sleep durations across midnight and excludes foreign rows', async () => {
+		const userId = await createUser('analytics-sleep@example.com');
+		const foreignUserId = await createUser(
+			'analytics-sleep-foreign@example.com',
+		);
+		await pool.query(
+			`INSERT INTO sleep_entries (
+				user_id,
+				sleep_date,
+				sleep_start,
+				sleep_end,
+				sleep_quality
+			 )
+			 VALUES
+				($1, DATE '2026-07-29', '2026-07-28T22:00:00Z', '2026-07-29T05:50:24Z', 4),
+				($1, DATE '2026-07-30', '2026-07-29T22:00:00Z', '2026-07-30T05:19:24Z', 4),
+				($1, DATE '2026-07-31', '2026-07-30T22:00:00Z', '2026-07-31T05:35:12Z', 5),
+				($2, DATE '2026-07-31', '2026-07-30T20:00:00Z', '2026-07-31T06:00:00Z', 1)`,
+			[userId, foreignUserId],
+		);
+
+		await request(app)
+			.get('/api/v1/analytics/sleep?period=week&endDate=2026-07-31')
+			.set('Authorization', authorization(userId))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toEqual({
+					range: {
+						period: 'week',
+						from: '2026-07-27',
+						to: '2026-07-31',
+					},
+					averageDurationMinutes: 455,
+					averageQuality: 4.3,
+					points: [
+						{ date: '2026-07-29', value: 470, secondaryValue: 4 },
+						{ date: '2026-07-30', value: 439, secondaryValue: 4 },
+						{ date: '2026-07-31', value: 455, secondaryValue: 5 },
+					],
+				});
+			});
+	});
+
+	test('returns null sleep averages for an empty period', async () => {
+		const userId = await createUser('analytics-no-sleep@example.com');
+
+		await request(app)
+			.get('/api/v1/analytics/sleep?period=week&endDate=2026-07-31')
+			.set('Authorization', authorization(userId))
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data).toMatchObject({
+					averageDurationMinutes: null,
+					averageQuality: null,
+					points: [],
+				});
+			});
 	});
 
 	test('finish immediately adds persisted fallback calories to analytics', async () => {

@@ -2,7 +2,7 @@ const { ApiError } = require('../../utils/api-error');
 const { addDetail } = require('../../utils/request-validation');
 const { PERIODS } = require('./analytics-period');
 
-const ACTIVITY_QUERY_FIELDS = new Set(['period', 'endDate']);
+const ANALYTICS_QUERY_FIELDS = new Set(['period', 'endDate']);
 
 function isValidDate(value) {
 	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -17,11 +17,11 @@ function isValidDate(value) {
 		&& date.getUTCDate() === day;
 }
 
-function validateActivityAnalyticsQuery(req, res, next) {
+function validateAnalyticsPeriodQuery(req, res, next) {
 	const details = [];
 
 	for (const field of Object.keys(req.query)) {
-		if (!ACTIVITY_QUERY_FIELDS.has(field)) {
+		if (!ANALYTICS_QUERY_FIELDS.has(field)) {
 			addDetail(details, field, 'UNKNOWN_FIELD', `${field} is not allowed`);
 		}
 	}
@@ -56,11 +56,11 @@ function validateActivityAnalyticsQuery(req, res, next) {
 		return next(new ApiError(400, 'Request validation failed', { details }));
 	}
 
-	req.activityAnalyticsQuery = { period, endDate };
+	req.analyticsPeriodQuery = { period, endDate };
 	return next();
 }
 
 module.exports = {
 	isValidDate,
-	validateActivityAnalyticsQuery,
+	validateAnalyticsPeriodQuery,
 };
