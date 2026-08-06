@@ -31,8 +31,9 @@ async function getActivityAnalytics(userId, query) {
 
 		return {
 			date: row.date,
-			value: Number(row.steps),
-			secondaryValue: Math.floor(dailyElapsedSeconds / 60),
+			steps: Number(row.steps),
+			workoutMinutes: Math.floor(dailyElapsedSeconds / 60),
+			caloriesBurned: new Decimal(row.caloriesBurned).toNumber(),
 		};
 	});
 

@@ -5831,6 +5831,22 @@ components:
         secondaryValue:
           type: number
           nullable: true
+    ActivityPoint:
+      type: object
+      required: [date, steps, workoutMinutes, caloriesBurned]
+      properties:
+        date:
+          type: string
+          format: date
+        steps:
+          type: integer
+          minimum: 0
+        workoutMinutes:
+          type: integer
+          minimum: 0
+        caloriesBurned:
+          type: number
+          minimum: 0
     PeriodRange:
       type: object
       required: [period, from, to]
@@ -5927,10 +5943,11 @@ components:
           type: array
           description: |
             По одной точке на каждый день диапазона, включая пустые дни;
-            `value` — шаги, `secondaryValue` — полные минуты завершённых
-            тренировок по локальной дате `finishedAt`.
+            `steps` — шаги, `workoutMinutes` — полные минуты и
+            `caloriesBurned` — калории завершённых тренировок по локальной
+            дате `finishedAt`.
           items:
-            $ref: '#/components/schemas/TimeSeriesPoint'
+            $ref: '#/components/schemas/ActivityPoint'
     SleepAnalytics:
       type: object
       required: [range, averageDurationMinutes, averageQuality, points]

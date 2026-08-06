@@ -57,8 +57,18 @@ describe('analytics service', () => {
 			},
 			totalSteps: 2000,
 			points: [
-				{ date: '2026-07-01', value: 1200, secondaryValue: 0 },
-				{ date: '2026-07-02', value: 800, secondaryValue: 1 },
+				{
+					date: '2026-07-01',
+					steps: 1200,
+					workoutMinutes: 0,
+					caloriesBurned: 10.5,
+				},
+				{
+					date: '2026-07-02',
+					steps: 800,
+					workoutMinutes: 1,
+					caloriesBurned: 20,
+				},
 			],
 		});
 		expect(analyticsRepository.getDailyActivity).toHaveBeenCalledWith(

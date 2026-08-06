@@ -127,11 +127,36 @@ describe('Activity analytics PostgreSQL HTTP contracts', () => {
 					},
 					totalSteps: 0,
 					points: [
-						{ date: '2026-07-27', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-28', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-29', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-30', value: 0, secondaryValue: 0 },
-						{ date: '2026-07-31', value: 0, secondaryValue: 0 },
+						{
+							date: '2026-07-27',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-28',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-29',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-30',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
+						{
+							date: '2026-07-31',
+							steps: 0,
+							workoutMinutes: 0,
+							caloriesBurned: 0,
+						},
 					],
 				});
 			});
@@ -196,13 +221,15 @@ describe('Activity analytics PostgreSQL HTTP contracts', () => {
 				expect(response.body.data.totalSteps).toBe(300);
 				expect(response.body.data.points[29]).toEqual({
 					date: '2026-07-30',
-					value: 100,
-					secondaryValue: 0,
+					steps: 100,
+					workoutMinutes: 0,
+					caloriesBurned: 10.5,
 				});
 				expect(response.body.data.points[30]).toEqual({
 					date: '2026-07-31',
-					value: 200,
-					secondaryValue: 1,
+					steps: 200,
+					workoutMinutes: 1,
+					caloriesBurned: 20,
 				});
 			});
 	});
