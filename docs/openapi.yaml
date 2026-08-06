@@ -2199,6 +2199,10 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/UserAchievement'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/achievements/{achievementId}:
     parameters:
@@ -2220,6 +2224,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/UserAchievement'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
 

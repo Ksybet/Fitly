@@ -20,6 +20,9 @@ jest.mock(
 jest.mock('../../src/modules/workouts/workouts.repository', () => ({
 	getActiveWorkoutById: jest.fn(),
 }));
+jest.mock('../../src/modules/achievements/achievements.repository', () => ({
+	awardReachedAchievements: jest.fn(),
+}));
 jest.mock(
 	'../../src/modules/workout-sessions/workout-session-clock',
 	() => ({ now: jest.fn() }),
@@ -37,6 +40,8 @@ const repository =
 	require('../../src/modules/workout-sessions/workout-sessions.repository');
 const workoutsRepository =
 	require('../../src/modules/workouts/workouts.repository');
+const achievementsRepository =
+	require('../../src/modules/achievements/achievements.repository');
 const clock =
 	require('../../src/modules/workout-sessions/workout-session-clock');
 const localDateService =
@@ -87,6 +92,7 @@ describe('workout sessions service', () => {
 			.mockResolvedValue(false);
 		repository.insertExerciseResults.mockResolvedValue();
 		repository.completeWorkoutPlan.mockResolvedValue(true);
+		achievementsRepository.awardReachedAchievements.mockResolvedValue([]);
 	});
 
 	test('starts a catalog workout using server time', async () => {
@@ -367,6 +373,72 @@ describe('workout sessions service', () => {
 			5,
 			exerciseResults,
 		);
+		expect(achievementsRepository.awardReachedAchievements)
+			.toHaveBeenCalledWith(
+				mockTransactionClient,
+				2,
+				[7],
+				finishedAt,
+			);
+	});
+
+	test('checks every affected exercise and allows multiple awards', async () => {
+		const finishedAt = new Date('2026-07-31T10:17:00.000Z');
+		const exerciseResults = [
+			{
+				exerciseId: 7,
+				completed: true,
+				repetitionsCompleted: 120,
+			},
+			{
+				exerciseId: 8,
+				completed: true,
+				durationSeconds: 30,
+			},
+		];
+		clock.now.mockReturnValueOnce(finishedAt);
+		repository.findSessionForUpdate.mockResolvedValueOnce(sessionRow());
+		repository.findExercisesByWorkoutId.mockResolvedValueOnce([
+			{ exerciseId: 7 },
+			{ exerciseId: 8 },
+		]);
+		repository.findSessionById.mockResolvedValueOnce(sessionRow({
+			status: 'completed',
+			finishedAt,
+			exerciseResults,
+		}));
+		achievementsRepository.awardReachedAchievements
+			.mockResolvedValueOnce([1, 2]);
+
+		await service.finishWorkoutSession(2, 5, { exerciseResults });
+
+		expect(achievementsRepository.awardReachedAchievements)
+			.toHaveBeenCalledWith(
+				mockTransactionClient,
+				2,
+				[7, 8],
+				finishedAt,
+			);
+	});
+
+	test('skips achievement SQL when a workout has no exercise results', async () => {
+		const finishedAt = new Date('2026-07-31T10:15:00.000Z');
+		clock.now.mockReturnValueOnce(finishedAt);
+		repository.findSessionForUpdate.mockResolvedValueOnce(sessionRow());
+		repository.findSessionById.mockResolvedValueOnce(sessionRow({
+			status: 'completed',
+			finishedAt,
+		}));
+
+		await service.finishWorkoutSession(2, 5);
+
+		expect(achievementsRepository.awardReachedAchievements)
+			.toHaveBeenCalledWith(
+				mockTransactionClient,
+				2,
+				[],
+				finishedAt,
+			);
 	});
 
 	test('calculates and stores fallback calories when omitted', async () => {
