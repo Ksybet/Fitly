@@ -5,6 +5,7 @@ const { pool, closeDatabase } = require('../../src/config/db');
 
 const appTables = [
 	'admin_login_attempts',
+	'achievements',
 	'auth_sessions',
 	'exercises',
 	'user_settings',
@@ -19,6 +20,7 @@ const appTables = [
 	'water_entries',
 	'workout_session_exercise_results',
 	'workout_sessions',
+	'user_achievements',
 	'goals',
 	'profiles',
 	'users',
@@ -26,6 +28,7 @@ const appTables = [
 
 const userDataTables = appTables.filter(table => (
 	![
+		'achievements',
 		'exercises',
 		'workout_exercises',
 		'workouts',
@@ -72,7 +75,82 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(17);
+		expect(cascadeResult.rows[0].count).toBe(18);
+	});
+
+	test('seeds squat achievements and protects awarded records', async () => {
+		const achievementsResult = await pool.query(
+			`SELECT
+				code,
+				exercise_id AS "exerciseId",
+				target_value AS "targetValue",
+				sort_order AS "sortOrder"
+			 FROM achievements
+			 ORDER BY sort_order`,
+		);
+		expect(achievementsResult.rows).toEqual([
+			{
+				code: 'SQUATS_50',
+				exerciseId: 7,
+				targetValue: 50,
+				sortOrder: 1,
+			},
+			{
+				code: 'SQUATS_100',
+				exerciseId: 7,
+				targetValue: 100,
+				sortOrder: 2,
+			},
+			{
+				code: 'SQUATS_150',
+				exerciseId: 7,
+				targetValue: 150,
+				sortOrder: 3,
+			},
+		]);
+
+		const userResult = await pool.query(
+			`INSERT INTO users (email, password_hash)
+			 VALUES ('achievement-owner@example.com', 'hash')
+			 RETURNING id`,
+		);
+		const userId = userResult.rows[0].id;
+		const achievementIdResult = await pool.query(
+			"SELECT id FROM achievements WHERE code = 'SQUATS_50'",
+		);
+		const achievementId = achievementIdResult.rows[0].id;
+
+		await pool.query(
+			`INSERT INTO user_achievements (
+				user_id,
+				achievement_id,
+				earned_at
+			 )
+			 VALUES ($1, $2, '2026-08-01T10:00:00Z')`,
+			[userId, achievementId],
+		);
+		await expect(pool.query(
+			`INSERT INTO user_achievements (
+				user_id,
+				achievement_id,
+				earned_at
+			 )
+			 VALUES ($1, $2, '2026-08-01T11:00:00Z')`,
+			[userId, achievementId],
+		)).rejects.toMatchObject({ code: '23505' });
+		await expect(pool.query(
+			'DELETE FROM achievements WHERE id = $1',
+			[achievementId],
+		)).rejects.toMatchObject({ code: '23503' });
+
+		await pool.query('DELETE FROM users WHERE id = $1', [userId]);
+		const grantsResult = await pool.query(
+			`SELECT COUNT(*)::integer AS count
+			 FROM user_achievements
+			 WHERE user_id = $1`,
+			[userId],
+		);
+		expect(grantsResult.rows[0].count).toBe(0);
 	});
 
 	test('restricts user roles and case-insensitive email uniqueness', async () => {
