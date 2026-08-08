@@ -48,4 +48,5 @@ module.exports = {
 	ADMIN_EMAIL: process.env.ADMIN_EMAIL || undefined,
 	ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || undefined,
 	TRUST_PROXY_HOPS: normalizeTrustProxyHops(process.env.TRUST_PROXY_HOPS),
+	EXPO_ACCESS_TOKEN: process.env.EXPO_ACCESS_TOKEN || undefined,
 };
