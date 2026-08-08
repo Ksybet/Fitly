@@ -8,6 +8,13 @@ const {
 const router = express.Router();
 
 router.get(
+	'/summary',
+	authMiddleware,
+	validateAnalyticsPeriodQuery,
+	analyticsController.getAnalyticsSummary,
+);
+
+router.get(
 	'/weight',
 	authMiddleware,
 	validateAnalyticsPeriodQuery,

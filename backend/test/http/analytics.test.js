@@ -1,4 +1,5 @@
 jest.mock('../../src/modules/analytics/analytics.service', () => ({
+	getAnalyticsSummary: jest.fn(),
 	getWeightAnalytics: jest.fn(),
 	getActivityAnalytics: jest.fn(),
 	getSleepAnalytics: jest.fn(),
@@ -56,6 +57,61 @@ describe('Analytics HTTP contracts', () => {
 		);
 	});
 
+	test.each(['week', 'month', 'year'])(
+		'returns the documented %s summary envelope',
+		async period => {
+			const endDate = period === 'week' ? undefined : '2026-08-06';
+			const query = new URLSearchParams({ period });
+			if (endDate) {
+				query.set('endDate', endDate);
+			}
+			const data = {
+				range: {
+					period,
+					from: '2026-01-01',
+					to: '2026-08-06',
+				},
+				latestWeightKg: 78.4,
+				weightChangeKg: -1.2,
+				bmi: 23.67,
+				averageSleepMinutes: 452,
+				averageSleepQuality: 4.2,
+				totalWaterMl: 10500,
+				averageDailyWaterMl: 1750,
+				totalSteps: 42600,
+				nutrition: {
+					calories: 11750,
+					proteinG: 615.4,
+					fatG: 422.7,
+					carbsG: 1380.2,
+				},
+				workouts: {
+					workoutCount: 4,
+					totalMinutes: 185,
+					caloriesBurned: 1240,
+				},
+				averageMoodScore: 3.8,
+			};
+			analyticsService.getAnalyticsSummary.mockResolvedValue(data);
+
+			await request(app)
+				.get(`/api/v1/analytics/summary?${query}`)
+				.set('Authorization', authorization())
+				.expect(200)
+				.expect(response => {
+					expect(response.body.data).toEqual(data);
+					expect(response.body.meta.requestId).toMatch(
+						/^req_[0-9a-f]{32}$/,
+					);
+				});
+
+			expect(analyticsService.getAnalyticsSummary).toHaveBeenCalledWith(
+				2,
+				{ period, endDate },
+			);
+		},
+	);
+
 	test.each([
 		[
 			'weight',
@@ -111,6 +167,10 @@ describe('Analytics HTTP contracts', () => {
 	});
 
 	test.each([
+		['summary', '', 'period', 'REQUIRED'],
+		['summary', '?period=quarter', 'period', 'INVALID_ENUM'],
+		['summary', '?period=week&endDate=2026-02-30', 'endDate', 'INVALID_DATE'],
+		['summary', '?period=week&extra=true', 'extra', 'UNKNOWN_FIELD'],
 		['weight', '', 'period', 'REQUIRED'],
 		['activity', '?period=quarter', 'period', 'INVALID_ENUM'],
 		['sleep', '?period=week&endDate=2026-02-30', 'endDate', 'INVALID_DATE'],
@@ -127,13 +187,14 @@ describe('Analytics HTTP contracts', () => {
 						expect.objectContaining({ field, code }),
 					]),
 				);
-			});
+		});
+		expect(analyticsService.getAnalyticsSummary).not.toHaveBeenCalled();
 		expect(analyticsService.getWeightAnalytics).not.toHaveBeenCalled();
 		expect(analyticsService.getActivityAnalytics).not.toHaveBeenCalled();
 		expect(analyticsService.getSleepAnalytics).not.toHaveBeenCalled();
 	});
 
-	test.each(['weight', 'activity', 'sleep'])(
+	test.each(['summary', 'weight', 'activity', 'sleep'])(
 		'requires authentication for %s analytics',
 		async endpoint => {
 			await request(app)

@@ -2406,6 +2406,15 @@ paths:
       tags: [Analytics]
       operationId: getAnalyticsSummary
       summary: Получить единую сводку здоровья
+      description: |
+        Возвращает итоговые показатели от начала выбранного календарного периода
+        до `endDate` включительно: с понедельника для `week`, с первого числа для
+        `month` и с 1 января для `year`.
+
+        Последний вес и ИМТ рассчитываются по записи не позднее `endDate`, а
+        изменение веса — только между первой и последней записями внутри периода.
+        Среднее потребление воды делится на число всех календарных дней диапазона,
+        включая дни без записей, и округляется до целого миллилитра.
       x-requirements: [FR-1008, FITLY-049]
       parameters:
         - $ref: '#/components/parameters/Period'
@@ -2425,6 +2434,8 @@ paths:
                         $ref: '#/components/schemas/AnalyticsSummary'
         '400':
           $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /api/v1/analytics/weight:
     get:
@@ -5889,7 +5900,13 @@ components:
           minimum: 0
     AnalyticsSummary:
       type: object
-      required: [range, latestWeightKg, bmi, averageSleepMinutes, averageSleepQuality, totalWaterMl, averageDailyWaterMl, totalSteps, nutrition, workouts, averageMoodScore]
+      description: |
+        Суммарные показатели за календарный диапазон. Изменение веса и ИМТ
+        округляются до двух знаков, средняя длительность сна и вода — до целого,
+        среднее качество сна и настроение — до одного знака. При отсутствии
+        исходных записей вес, изменение веса, ИМТ, показатели сна и настроение
+        равны `null`; суммарные показатели равны нулю.
+      required: [range, latestWeightKg, weightChangeKg, bmi, averageSleepMinutes, averageSleepQuality, totalWaterMl, averageDailyWaterMl, totalSteps, nutrition, workouts, averageMoodScore]
       properties:
         range:
           $ref: '#/components/schemas/PeriodRange'
@@ -5914,11 +5931,12 @@ components:
         averageDailyWaterMl:
           type: number
           minimum: 0
+          multipleOf: 1
         totalSteps:
           type: integer
           minimum: 0
         nutrition:
-          $ref: '#/components/schemas/NutritionValues'
+          $ref: '#/components/schemas/RoundedNutritionValues'
         workouts:
           $ref: '#/components/schemas/WorkoutMetrics'
         averageMoodScore:
