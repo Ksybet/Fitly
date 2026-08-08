@@ -1,8 +1,7 @@
 const workoutSessionsRepository =
 	require('./workout-sessions.repository');
 const workoutsRepository = require('../workouts/workouts.repository');
-const achievementsRepository =
-	require('../achievements/achievements.repository');
+const achievementsService = require('../achievements/achievements.service');
 const workoutSessionClock = require('./workout-session-clock');
 const {
 	calculateElapsedSeconds,
@@ -569,12 +568,19 @@ async function finishWorkoutSession(userId, sessionId, input = {}) {
 			}
 		}
 
-		await achievementsRepository.awardReachedAchievements(
-			client,
-			normalizedUserId,
-			normalizedInput.exerciseResults.map(result => result.exerciseId),
-			finishedAt,
-		);
+		const affectedExerciseIds = normalizedInput.exerciseResults
+			.filter(result => result.repetitionsCompleted > 0)
+			.map(result => result.exerciseId);
+		if (affectedExerciseIds.length > 0) {
+			await achievementsService.evaluateAndAward({
+				client,
+				userId: normalizedUserId,
+				metricType:
+					achievementsService.METRIC_TYPES.EXERCISE_REPETITIONS,
+				affectedIds: affectedExerciseIds,
+				earnedAt: finishedAt,
+			});
+		}
 
 		const record = await workoutSessionsRepository.findSessionById(
 			normalizedUserId,

@@ -57,7 +57,7 @@ async function findActiveAchievementWithProgress(userId, achievementId) {
 	return result.rows[0] || null;
 }
 
-async function awardReachedAchievements(
+async function awardReachedExerciseRepetitionAchievements(
 	client,
 	userId,
 	exerciseIds,
@@ -68,17 +68,7 @@ async function awardReachedAchievements(
 	}
 
 	const result = await client.query(
-		`INSERT INTO user_achievements (
-			user_id,
-			achievement_id,
-			earned_at
-		 )
-		 SELECT
-			$1,
-			achievement.id,
-			$3
-		 FROM achievements achievement
-		 JOIN (
+		`WITH progress AS (
 			SELECT
 				exercise_result.exercise_id,
 				SUM(COALESCE(exercise_result.repetitions_completed, 0))::bigint
@@ -90,20 +80,44 @@ async function awardReachedAchievements(
 			  AND session.status = 'completed'
 			  AND exercise_result.exercise_id = ANY($2::integer[])
 			GROUP BY exercise_result.exercise_id
-		 ) progress ON progress.exercise_id = achievement.exercise_id
-		 WHERE achievement.is_active = TRUE
-		   AND achievement.metric_type = 'exercise_repetitions'
-		   AND progress.current_value >= achievement.target_value
-		 ON CONFLICT (user_id, achievement_id) DO NOTHING
-		 RETURNING achievement_id AS "achievementId"`,
+		 ),
+		 reached AS (
+			SELECT achievement.id
+			FROM achievements achievement
+			JOIN progress
+				ON progress.exercise_id = achievement.exercise_id
+			WHERE achievement.is_active = TRUE
+			  AND achievement.metric_type = 'exercise_repetitions'
+			  AND progress.current_value >= achievement.target_value
+		 ),
+		 inserted AS (
+			INSERT INTO user_achievements (
+				user_id,
+				achievement_id,
+				earned_at
+			)
+			SELECT $1, reached.id, $3
+			FROM reached
+			ON CONFLICT (user_id, achievement_id) DO NOTHING
+			RETURNING achievement_id, earned_at
+		 )
+		 SELECT
+			achievement.id,
+			achievement.code,
+			achievement.title,
+			inserted.earned_at AS "earnedAt"
+		 FROM inserted
+		 JOIN achievements achievement
+			ON achievement.id = inserted.achievement_id
+		 ORDER BY achievement.sort_order ASC, achievement.id ASC`,
 		[userId, exerciseIds, earnedAt],
 	);
 
-	return result.rows.map(row => Number(row.achievementId));
+	return result.rows;
 }
 
 module.exports = {
 	listActiveAchievementsWithProgress,
 	findActiveAchievementWithProgress,
-	awardReachedAchievements,
+	awardReachedExerciseRepetitionAchievements,
 };

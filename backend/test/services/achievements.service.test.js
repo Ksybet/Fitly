@@ -1,6 +1,7 @@
 jest.mock('../../src/modules/achievements/achievements.repository', () => ({
 	listActiveAchievementsWithProgress: jest.fn(),
 	findActiveAchievementWithProgress: jest.fn(),
+	awardReachedExerciseRepetitionAchievements: jest.fn(),
 }));
 
 const repository =
@@ -98,5 +99,77 @@ describe('achievements service', () => {
 			status: 404,
 			code: 'NOT_FOUND',
 		});
+	});
+
+	test('skips evaluation when no entities were affected', async () => {
+		await expect(service.evaluateAndAward({
+			client: { query: jest.fn() },
+			userId: 7,
+			metricType: service.METRIC_TYPES.EXERCISE_REPETITIONS,
+			affectedIds: [],
+			earnedAt: new Date('2026-08-01T10:00:00.000Z'),
+		})).resolves.toEqual([]);
+
+		expect(repository.awardReachedExerciseRepetitionAchievements)
+			.not.toHaveBeenCalled();
+	});
+
+	test('returns no awards when no new threshold was reached', async () => {
+		const client = { query: jest.fn() };
+		const earnedAt = new Date('2026-08-01T10:00:00.000Z');
+		repository.awardReachedExerciseRepetitionAchievements
+			.mockResolvedValue([]);
+
+		await expect(service.evaluateAndAward({
+			client,
+			userId: 7,
+			metricType: service.METRIC_TYPES.EXERCISE_REPETITIONS,
+			affectedIds: [7, 7],
+			earnedAt,
+		})).resolves.toEqual([]);
+
+		expect(repository.awardReachedExerciseRepetitionAchievements)
+			.toHaveBeenCalledWith(client, 7, [7], earnedAt);
+	});
+
+	test('returns every newly awarded achievement in notification-ready form', async () => {
+		const client = { query: jest.fn() };
+		const earnedAt = new Date('2026-08-01T10:00:00.000Z');
+		repository.awardReachedExerciseRepetitionAchievements
+			.mockResolvedValue([
+				{
+					id: 1,
+					code: 'SQUATS_50',
+					title: '50 приседаний',
+					earnedAt,
+				},
+				{
+					id: 2,
+					code: 'SQUATS_100',
+					title: '100 приседаний',
+					earnedAt,
+				},
+			]);
+
+		await expect(service.evaluateAndAward({
+			client,
+			userId: 7,
+			metricType: service.METRIC_TYPES.EXERCISE_REPETITIONS,
+			affectedIds: [7],
+			earnedAt,
+		})).resolves.toEqual([
+			{
+				id: 1,
+				code: 'SQUATS_50',
+				title: '50 приседаний',
+				earnedAt: '2026-08-01T10:00:00.000Z',
+			},
+			{
+				id: 2,
+				code: 'SQUATS_100',
+				title: '100 приседаний',
+				earnedAt: '2026-08-01T10:00:00.000Z',
+			},
+		]);
 	});
 });
