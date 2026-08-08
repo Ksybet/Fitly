@@ -5783,6 +5783,7 @@ components:
           type: string
           minLength: 20
           maxLength: 4096
+          description: Expo Push Token, полученный мобильным клиентом через `getExpoPushTokenAsync`.
         appVersion:
           type: string
           maxLength: 30

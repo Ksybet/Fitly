@@ -22,6 +22,7 @@ const workoutSessionsRoutes =
 const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const achievementsRoutes =
 	require('./modules/achievements/achievements.routes');
+const devicesRoutes = require('./modules/devices/devices.routes');
 
 const {
 	authMiddleware,
@@ -65,6 +66,7 @@ app.use('/api/v1/workout-plans', workoutPlansRoutes);
 app.use('/api/v1/workout-sessions', workoutSessionsRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/achievements', achievementsRoutes);
+app.use('/api/v1/devices', devicesRoutes);
 app.use('/api/v1/admin', authMiddleware, requireRole('admin'));
 
 app.use((req, res, next) => {
