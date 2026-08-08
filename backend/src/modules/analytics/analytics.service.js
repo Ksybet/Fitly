@@ -2,6 +2,9 @@ const Decimal = require('decimal.js');
 const analyticsRepository = require('./analytics.repository');
 const { calculatePeriodRange } = require('./analytics-period');
 const {
+	roundNutritionValues,
+} = require('../nutrition/nutrition.calculator');
+const {
 	getDateInTimeZone,
 	getUserTimezone,
 } = require('../settings/user-local-date.service');
@@ -24,8 +27,80 @@ function calculateBmi(weightKg, heightCm) {
 	const heightMeters = new Decimal(heightCm).dividedBy(100);
 	return new Decimal(weightKg)
 		.dividedBy(heightMeters.pow(2))
-		.toDecimalPlaces(2)
+		.toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
 		.toNumber();
+}
+
+function buildWeightMetrics(rows, latestWeight, heightCm) {
+	const currentWeightKg = latestWeight === null ? null : Number(latestWeight);
+	const changeKg = rows.length < 2
+		? null
+		: new Decimal(rows.at(-1).weightKg)
+			.minus(rows[0].weightKg)
+			.toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+			.toNumber();
+
+	return {
+		currentWeightKg,
+		changeKg,
+		bmi: calculateBmi(currentWeightKg, heightCm),
+	};
+}
+
+function buildActivityMetrics(rows) {
+	let workoutCount = 0;
+	let elapsedSeconds = 0;
+	let caloriesBurned = new Decimal(0);
+	let totalSteps = 0;
+
+	for (const row of rows) {
+		workoutCount += Number(row.workoutCount);
+		elapsedSeconds += Number(row.elapsedSeconds);
+		caloriesBurned = caloriesBurned.plus(row.caloriesBurned);
+		totalSteps += Number(row.steps);
+	}
+
+	return {
+		workouts: {
+			workoutCount,
+			totalMinutes: Math.floor(elapsedSeconds / 60),
+			caloriesBurned: caloriesBurned.toNumber(),
+		},
+		totalSteps,
+	};
+}
+
+function buildSleepMetrics(rows) {
+	if (rows.length === 0) {
+		return {
+			averageDurationMinutes: null,
+			averageQuality: null,
+		};
+	}
+
+	let totalDurationMinutes = new Decimal(0);
+	let totalQuality = new Decimal(0);
+	for (const row of rows) {
+		totalDurationMinutes = totalDurationMinutes.plus(row.durationMinutes);
+		totalQuality = totalQuality.plus(row.quality);
+	}
+
+	return {
+		averageDurationMinutes: totalDurationMinutes
+			.dividedBy(rows.length)
+			.toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+			.toNumber(),
+		averageQuality: totalQuality
+			.dividedBy(rows.length)
+			.toDecimalPlaces(1, Decimal.ROUND_HALF_UP)
+			.toNumber(),
+	};
+}
+
+function countCalendarDays(range) {
+	const from = Date.parse(`${range.from}T00:00:00.000Z`);
+	const to = Date.parse(`${range.to}T00:00:00.000Z`);
+	return Math.floor((to - from) / 86400000) + 1;
 }
 
 async function getWeightAnalytics(userId, query) {
@@ -38,23 +113,15 @@ async function getWeightAnalytics(userId, query) {
 		analyticsRepository.getLatestWeight(normalizedUserId, range.to),
 		analyticsRepository.getProfileHeight(normalizedUserId),
 	]);
-	const currentWeightKg = latestWeight === null ? null : Number(latestWeight);
+	const metrics = buildWeightMetrics(rows, latestWeight, heightCm);
 	const points = rows.map(row => ({
 		date: row.date,
 		value: Number(row.weightKg),
 	}));
-	const changeKg = rows.length < 2
-		? null
-		: new Decimal(rows.at(-1).weightKg)
-			.minus(rows[0].weightKg)
-			.toDecimalPlaces(2)
-			.toNumber();
 
 	return {
 		range,
-		currentWeightKg,
-		changeKg,
-		bmi: calculateBmi(currentWeightKg, heightCm),
+		...metrics,
 		points,
 	};
 }
@@ -69,17 +136,9 @@ async function getActivityAnalytics(userId, query) {
 		range,
 		timezone,
 	);
-
-	let workoutCount = 0;
-	let elapsedSeconds = 0;
-	let caloriesBurned = new Decimal(0);
-	let totalSteps = 0;
+	const metrics = buildActivityMetrics(rows);
 	const points = rows.map(row => {
 		const dailyElapsedSeconds = Number(row.elapsedSeconds);
-		workoutCount += Number(row.workoutCount);
-		elapsedSeconds += dailyElapsedSeconds;
-		caloriesBurned = caloriesBurned.plus(row.caloriesBurned);
-		totalSteps += Number(row.steps);
 
 		return {
 			date: row.date,
@@ -91,12 +150,7 @@ async function getActivityAnalytics(userId, query) {
 
 	return {
 		range,
-		workouts: {
-			workoutCount,
-			totalMinutes: Math.floor(elapsedSeconds / 60),
-			caloriesBurned: caloriesBurned.toNumber(),
-		},
-		totalSteps,
+		...metrics,
 		points,
 	};
 }
@@ -110,23 +164,10 @@ async function getSleepAnalytics(userId, query) {
 		normalizedUserId,
 		range,
 	);
-
-	if (rows.length === 0) {
-		return {
-			range,
-			averageDurationMinutes: null,
-			averageQuality: null,
-			points: [],
-		};
-	}
-
-	let totalDurationMinutes = new Decimal(0);
-	let totalQuality = new Decimal(0);
+	const metrics = buildSleepMetrics(rows);
 	const points = rows.map(row => {
 		const durationMinutes = new Decimal(row.durationMinutes);
 		const quality = Number(row.quality);
-		totalDurationMinutes = totalDurationMinutes.plus(durationMinutes);
-		totalQuality = totalQuality.plus(quality);
 
 		return {
 			date: row.date,
@@ -137,19 +178,76 @@ async function getSleepAnalytics(userId, query) {
 
 	return {
 		range,
-		averageDurationMinutes: totalDurationMinutes
-			.dividedBy(rows.length)
-			.toDecimalPlaces(0)
-			.toNumber(),
-		averageQuality: totalQuality
-			.dividedBy(rows.length)
-			.toDecimalPlaces(1)
-			.toNumber(),
+		...metrics,
 		points,
 	};
 }
 
+async function getAnalyticsSummary(userId, query) {
+	const { normalizedUserId, timezone, range } = await resolveAnalyticsContext(
+		userId,
+		query,
+	);
+	const [
+		weightRows,
+		latestWeight,
+		heightCm,
+		activityRows,
+		sleepRows,
+		nutritionTotals,
+		totalWater,
+		averageMood,
+	] = await Promise.all([
+		analyticsRepository.getWeightEntries(normalizedUserId, range),
+		analyticsRepository.getLatestWeight(normalizedUserId, range.to),
+		analyticsRepository.getProfileHeight(normalizedUserId),
+		analyticsRepository.getDailyActivity(
+			normalizedUserId,
+			range,
+			timezone,
+		),
+		analyticsRepository.getSleepEntries(normalizedUserId, range),
+		analyticsRepository.getNutritionTotals(
+			normalizedUserId,
+			range,
+			timezone,
+		),
+		analyticsRepository.getTotalWater(normalizedUserId, range),
+		analyticsRepository.getAverageMood(normalizedUserId, range),
+	]);
+
+	const weight = buildWeightMetrics(weightRows, latestWeight, heightCm);
+	const activity = buildActivityMetrics(activityRows);
+	const sleep = buildSleepMetrics(sleepRows);
+	const totalWaterMl = Number(totalWater);
+	const averageDailyWaterMl = new Decimal(totalWaterMl)
+		.dividedBy(countCalendarDays(range))
+		.toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+		.toNumber();
+	const averageMoodScore = averageMood === null
+		? null
+		: new Decimal(averageMood)
+			.toDecimalPlaces(1, Decimal.ROUND_HALF_UP)
+			.toNumber();
+
+	return {
+		range,
+		latestWeightKg: weight.currentWeightKg,
+		weightChangeKg: weight.changeKg,
+		bmi: weight.bmi,
+		averageSleepMinutes: sleep.averageDurationMinutes,
+		averageSleepQuality: sleep.averageQuality,
+		totalWaterMl,
+		averageDailyWaterMl,
+		totalSteps: activity.totalSteps,
+		nutrition: roundNutritionValues(nutritionTotals),
+		workouts: activity.workouts,
+		averageMoodScore,
+	};
+}
+
 module.exports = {
+	getAnalyticsSummary,
 	getWeightAnalytics,
 	getActivityAnalytics,
 	getSleepAnalytics,

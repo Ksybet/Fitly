@@ -108,10 +108,55 @@ async function getSleepEntries(userId, range) {
 	return result.rows;
 }
 
+async function getNutritionTotals(userId, range, timezone) {
+	const result = await pool.query(
+		`SELECT
+			COALESCE(SUM(mi.total_calories), 0)::numeric AS calories,
+			COALESCE(SUM(mi.total_protein_g), 0)::numeric AS "proteinG",
+			COALESCE(SUM(mi.total_fat_g), 0)::numeric AS "fatG",
+			COALESCE(SUM(mi.total_carbs_g), 0)::numeric AS "carbsG"
+		 FROM meal_entries me
+		 JOIN meal_items mi ON mi.meal_entry_id = me.id
+		 WHERE me.user_id = $1
+		   AND me.eaten_at >= ($2::date::timestamp AT TIME ZONE $4)
+		   AND me.eaten_at < (($3::date + 1)::timestamp AT TIME ZONE $4)`,
+		[userId, range.from, range.to, timezone],
+	);
+
+	return result.rows[0];
+}
+
+async function getTotalWater(userId, range) {
+	const result = await pool.query(
+		`SELECT COALESCE(SUM(amount_ml), 0)::bigint AS "totalWaterMl"
+		 FROM water_entries
+		 WHERE user_id = $1
+		   AND water_date BETWEEN $2::date AND $3::date`,
+		[userId, range.from, range.to],
+	);
+
+	return result.rows[0].totalWaterMl;
+}
+
+async function getAverageMood(userId, range) {
+	const result = await pool.query(
+		`SELECT AVG(mood_score)::numeric AS "averageMoodScore"
+		 FROM mood_entries
+		 WHERE user_id = $1
+		   AND mood_date BETWEEN $2::date AND $3::date`,
+		[userId, range.from, range.to],
+	);
+
+	return result.rows[0].averageMoodScore;
+}
+
 module.exports = {
 	getWeightEntries,
 	getLatestWeight,
 	getProfileHeight,
 	getDailyActivity,
 	getSleepEntries,
+	getNutritionTotals,
+	getTotalWater,
+	getAverageMood,
 };

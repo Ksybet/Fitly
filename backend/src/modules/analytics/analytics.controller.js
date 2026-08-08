@@ -5,6 +5,18 @@ function currentUserId(req) {
 	return Number(req.user.userId || req.user.id);
 }
 
+async function getAnalyticsSummary(req, res, next) {
+	try {
+		const analytics = await analyticsService.getAnalyticsSummary(
+			currentUserId(req),
+			req.analyticsPeriodQuery,
+		);
+		return sendSuccess(res, analytics);
+	} catch (error) {
+		return next(error);
+	}
+}
+
 async function getWeightAnalytics(req, res, next) {
 	try {
 		const analytics = await analyticsService.getWeightAnalytics(
@@ -42,6 +54,7 @@ async function getSleepAnalytics(req, res, next) {
 }
 
 module.exports = {
+	getAnalyticsSummary,
 	getWeightAnalytics,
 	getActivityAnalytics,
 	getSleepAnalytics,
