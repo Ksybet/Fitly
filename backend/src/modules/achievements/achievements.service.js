@@ -4,6 +4,9 @@ const { ensureValidUserId } = require('../../utils/validation');
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
+const METRIC_TYPES = Object.freeze({
+	EXERCISE_REPETITIONS: 'exercise_repetitions',
+});
 
 function toDateTimeString(value) {
 	return value instanceof Date ? value.toISOString() : value;
@@ -93,11 +96,64 @@ async function getAchievement(userId, achievementId) {
 	return toUserAchievementDto(achievement);
 }
 
+function normalizeAffectedIds(affectedIds) {
+	if (!Array.isArray(affectedIds)) {
+		throw new TypeError('affectedIds must be an array');
+	}
+
+	return [...new Set(affectedIds.map(affectedId => {
+		if (!Number.isInteger(affectedId) || affectedId < 1) {
+			throw new TypeError('affectedIds must contain positive integers');
+		}
+
+		return affectedId;
+	}))];
+}
+
+function toNewlyAwardedAchievement(record) {
+	return {
+		id: Number(record.id),
+		code: record.code,
+		title: record.title,
+		earnedAt: toDateTimeString(record.earnedAt),
+	};
+}
+
+async function evaluateAndAward({
+	client,
+	userId,
+	metricType,
+	affectedIds,
+	earnedAt,
+}) {
+	const normalizedUserId = ensureValidUserId(userId);
+	const normalizedAffectedIds = normalizeAffectedIds(affectedIds);
+	if (normalizedAffectedIds.length === 0) {
+		return [];
+	}
+
+	if (metricType !== METRIC_TYPES.EXERCISE_REPETITIONS) {
+		throw new TypeError(`Unsupported achievement metric: ${metricType}`);
+	}
+
+	const awarded = await achievementsRepository
+		.awardReachedExerciseRepetitionAchievements(
+			client,
+			normalizedUserId,
+			normalizedAffectedIds,
+			earnedAt,
+		);
+
+	return awarded.map(toNewlyAwardedAchievement);
+}
+
 module.exports = {
 	DEFAULT_PAGE,
 	DEFAULT_PAGE_SIZE,
+	METRIC_TYPES,
 	deriveAchievementProgress,
 	toUserAchievementDto,
 	listAchievements,
 	getAchievement,
+	evaluateAndAward,
 };

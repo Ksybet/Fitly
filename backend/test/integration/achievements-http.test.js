@@ -74,6 +74,27 @@ async function insertSession(userId, status, exerciseId, repetitions) {
 	return sessionResult.rows[0].id;
 }
 
+async function finishWorkout(token, repetitions, finishedAt) {
+	const start = await request(app)
+		.post('/api/v1/workout-sessions')
+		.set('Authorization', token)
+		.send({ workoutId: 3 })
+		.expect(201);
+	clock.now.mockReturnValue(finishedAt);
+
+	return request(app)
+		.post(`/api/v1/workout-sessions/${start.body.data.id}/finish`)
+		.set('Authorization', token)
+		.send({
+			exerciseResults: [{
+				exerciseId: 7,
+				completed: true,
+				repetitionsCompleted: repetitions,
+			}],
+		})
+		.expect(200);
+}
+
 describe('Achievements PostgreSQL HTTP contracts', () => {
 	beforeAll(async () => {
 		const result = await pool.query('SELECT current_database() AS name');
@@ -100,32 +121,40 @@ describe('Achievements PostgreSQL HTTP contracts', () => {
 		await closeDatabase();
 	});
 
-	test('awards every reached level once after finishing a workout', async () => {
+	test('awards crossed thresholds once across sequential workouts', async () => {
 		const userId = await createUser('achievement-flow@example.com');
 		const otherUserId = await createUser('achievement-other@example.com');
 		const token = authorization(userId);
 
-		const start = await request(app)
-			.post('/api/v1/workout-sessions')
-			.set('Authorization', token)
-			.send({ workoutId: 3 })
-			.expect(201);
-		clock.now.mockReturnValue(new Date('2026-08-01T10:15:00.000Z'));
-		await request(app)
-			.post(`/api/v1/workout-sessions/${start.body.data.id}/finish`)
-			.set('Authorization', token)
-			.send({
-				exerciseResults: [{
-					exerciseId: 7,
-					completed: true,
-					setsCompleted: 10,
-					repetitionsCompleted: 160,
-				}],
-			})
-			.expect(200)
-			.expect(response => {
-				expect(response.body.data).not.toHaveProperty('achievements');
-			});
+		await finishWorkout(
+			token,
+			40,
+			new Date('2026-08-01T10:15:00.000Z'),
+		);
+		let grants = await pool.query(
+			`SELECT COUNT(*)::integer AS count
+			 FROM user_achievements
+			 WHERE user_id = $1`,
+			[userId],
+		);
+		expect(grants.rows[0].count).toBe(0);
+
+		await finishWorkout(
+			token,
+			70,
+			new Date('2026-08-01T10:30:00.000Z'),
+		);
+		await finishWorkout(
+			token,
+			40,
+			new Date('2026-08-01T10:45:00.000Z'),
+		);
+		const finalFinish = await finishWorkout(
+			token,
+			10,
+			new Date('2026-08-01T11:00:00.000Z'),
+		);
+		expect(finalFinish.body.data).not.toHaveProperty('achievements');
 
 		await request(app)
 			.get('/api/v1/achievements')
@@ -133,25 +162,54 @@ describe('Achievements PostgreSQL HTTP contracts', () => {
 			.expect(200)
 			.expect(response => {
 				expect(response.body.data).toHaveLength(3);
-				expect(response.body.data.map(item => item.targetValue))
-					.toEqual([50, 100, 150]);
-				for (const item of response.body.data) {
-					expect(item).toMatchObject({
+				expect(response.body.data).toEqual([
+					expect.objectContaining({
+						targetValue: 50,
 						status: 'earned',
 						currentValue: 160,
 						progressPercent: 100,
-						earnedAt: '2026-08-01T10:15:00.000Z',
-					});
-				}
+						earnedAt: '2026-08-01T10:30:00.000Z',
+					}),
+					expect.objectContaining({
+						targetValue: 100,
+						status: 'earned',
+						currentValue: 160,
+						progressPercent: 100,
+						earnedAt: '2026-08-01T10:30:00.000Z',
+					}),
+					expect.objectContaining({
+						targetValue: 150,
+						status: 'earned',
+						currentValue: 160,
+						progressPercent: 100,
+						earnedAt: '2026-08-01T10:45:00.000Z',
+					}),
+				]);
 			});
 
-		const grants = await pool.query(
-			`SELECT COUNT(*)::integer AS count
-			 FROM user_achievements
-			 WHERE user_id = $1`,
+		grants = await pool.query(
+			`SELECT achievement.code, user_achievement.earned_at AS "earnedAt"
+			 FROM user_achievements user_achievement
+			 JOIN achievements achievement
+				ON achievement.id = user_achievement.achievement_id
+			 WHERE user_achievement.user_id = $1
+			 ORDER BY achievement.target_value ASC`,
 			[userId],
 		);
-		expect(grants.rows[0].count).toBe(3);
+		expect(grants.rows).toEqual([
+			{
+				code: 'SQUATS_50',
+				earnedAt: new Date('2026-08-01T10:30:00.000Z'),
+			},
+			{
+				code: 'SQUATS_100',
+				earnedAt: new Date('2026-08-01T10:30:00.000Z'),
+			},
+			{
+				code: 'SQUATS_150',
+				earnedAt: new Date('2026-08-01T10:45:00.000Z'),
+			},
+		]);
 
 		await request(app)
 			.get('/api/v1/achievements')
