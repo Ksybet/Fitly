@@ -117,10 +117,40 @@ function nextWaterRun(now, timezone, intervalMinutes) {
 	}, timezone);
 }
 
+function parseTime(value) {
+	if (typeof value !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+		throw new TypeError('time must use HH:mm format');
+	}
+	const [hour, minute] = value.split(':').map(Number);
+	return { hour, minute };
+}
+
+function nextSleepRun(now, timezone, reminderTime) {
+	const currentDate = getZonedParts(now, timezone);
+	const time = parseTime(reminderTime);
+	let candidate = localDateTimeToDate({
+		year: currentDate.year,
+		month: currentDate.month,
+		day: currentDate.day,
+		...time,
+		second: 0,
+	}, timezone);
+	if (candidate.getTime() <= new Date(now).getTime()) {
+		candidate = localDateTimeToDate({
+			...addLocalDays(currentDate, 1),
+			...time,
+			second: 0,
+		}, timezone);
+	}
+	return candidate;
+}
+
 module.exports = {
 	getZonedParts,
 	offsetAt,
 	localDateTimeToDate,
 	addLocalDays,
 	nextWaterRun,
+	parseTime,
+	nextSleepRun,
 };

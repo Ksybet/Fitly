@@ -1,5 +1,5 @@
 const schedulesRepository = require('./notification-schedules.repository');
-const { nextWaterRun } = require('./notification-time');
+const { nextWaterRun, nextSleepRun } = require('./notification-time');
 
 async function syncWaterSchedule(queryable, userId, settings, now = new Date()) {
 	const preferences = settings.notifications ?? {};
@@ -26,10 +26,37 @@ async function syncWaterSchedule(queryable, userId, settings, now = new Date()) 
 }
 
 async function syncRecurringSchedules(queryable, userId, settings, now) {
-	return syncWaterSchedule(queryable, userId, settings, now);
+	const water = await syncWaterSchedule(queryable, userId, settings, now);
+	const sleep = await syncSleepSchedule(queryable, userId, settings, now);
+	return { water, sleep };
+}
+
+async function syncSleepSchedule(queryable, userId, settings, now = new Date()) {
+	const preferences = settings.notifications ?? {};
+	if (preferences.sleepEnabled !== true) {
+		await schedulesRepository.cancelRecurringSchedule(
+			queryable,
+			userId,
+			'sleep',
+		);
+		return null;
+	}
+
+	const nextRunAt = nextSleepRun(
+		now,
+		settings.timezone ?? 'UTC',
+		preferences.sleepReminderTime,
+	);
+	return schedulesRepository.upsertRecurringSchedule(
+		queryable,
+		userId,
+		'sleep',
+		nextRunAt,
+	);
 }
 
 module.exports = {
 	syncWaterSchedule,
+	syncSleepSchedule,
 	syncRecurringSchedules,
 };

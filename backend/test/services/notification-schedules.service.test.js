@@ -40,4 +40,33 @@ describe('notification schedules service', () => {
 		expect(schedulesRepository.cancelRecurringSchedule)
 			.toHaveBeenCalledWith(client, 7, 'water');
 	});
+
+	test('upserts the next sleep time in the user timezone', async () => {
+		schedulesRepository.upsertRecurringSchedule.mockResolvedValueOnce({ id: '2' });
+
+		await schedulesService.syncSleepSchedule(client, 7, {
+			timezone: 'Europe/Istanbul',
+			notifications: {
+				sleepEnabled: true,
+				sleepReminderTime: '22:30',
+			},
+		}, new Date('2026-08-08T18:00:00.000Z'));
+
+		expect(schedulesRepository.upsertRecurringSchedule).toHaveBeenCalledWith(
+			client,
+			7,
+			'sleep',
+			new Date('2026-08-08T19:30:00.000Z'),
+		);
+	});
+
+	test('cancels the schedule when sleep reminders are disabled', async () => {
+		await schedulesService.syncSleepSchedule(client, 7, {
+			timezone: 'UTC',
+			notifications: { sleepEnabled: false },
+		});
+
+		expect(schedulesRepository.cancelRecurringSchedule)
+			.toHaveBeenCalledWith(client, 7, 'sleep');
+	});
 });
