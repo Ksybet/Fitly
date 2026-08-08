@@ -54,6 +54,22 @@ describe('Notification PostgreSQL schema', () => {
 		]);
 	});
 
+	test('stores internal delivery queue state outside the public status', async () => {
+		const columns = await pool.query(
+			`SELECT column_name
+			 FROM information_schema.columns
+			 WHERE table_schema = 'public'
+			   AND table_name = 'notifications'
+			   AND column_name = ANY($1::text[])
+			 ORDER BY column_name`,
+			[['delivery_locked_until', 'delivery_queued_at']],
+		);
+		expect(columns.rows.map(row => row.column_name)).toEqual([
+			'delivery_locked_until',
+			'delivery_queued_at',
+		]);
+	});
+
 	test('enforces token, notification and schedule invariants', async () => {
 		await expect(pool.query(
 			`INSERT INTO push_devices (user_id, platform, push_token)

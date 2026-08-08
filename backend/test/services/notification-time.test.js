@@ -3,6 +3,7 @@ const {
 	localDateTimeToDate,
 	nextWaterRun,
 	nextSleepRun,
+	activeDoNotDisturbEnd,
 } = require('../../src/modules/notifications/notification-time');
 
 describe('notification time calculations', () => {
@@ -83,5 +84,33 @@ describe('notification time calculations', () => {
 			hour: 3,
 			minute: 30,
 		});
+	});
+
+	test('returns the local end of an overnight DND interval', () => {
+		const end = activeDoNotDisturbEnd(
+			new Date('2026-08-08T20:30:00.000Z'),
+			'Europe/Istanbul',
+			'22:00',
+			'07:00',
+		);
+
+		expect(end.toISOString()).toBe('2026-08-09T04:00:00.000Z');
+		expect(activeDoNotDisturbEnd(
+			new Date('2026-08-08T10:00:00.000Z'),
+			'Europe/Istanbul',
+			'22:00',
+			'07:00',
+		)).toBeNull();
+	});
+
+	test('keeps the DND end correct across a DST transition', () => {
+		const end = activeDoNotDisturbEnd(
+			new Date('2026-03-29T00:30:00.000Z'),
+			'Europe/Berlin',
+			'22:00',
+			'03:30',
+		);
+
+		expect(end.toISOString()).toBe('2026-03-29T01:30:00.000Z');
 	});
 });

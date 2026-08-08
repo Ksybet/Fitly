@@ -28,6 +28,17 @@ function normalizeTrustProxyHops(value) {
 	return hops;
 }
 
+function normalizeInteger(value, name, defaultValue, minimum, maximum) {
+	if (value === undefined || value === '') {
+		return defaultValue;
+	}
+	const number = Number(value);
+	if (!Number.isInteger(number) || number < minimum || number > maximum) {
+		throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
+	}
+	return number;
+}
+
 if (!process.env.JWT_SECRET || !process.env.JWT_SECRET.trim()) {
 	throw new Error('JWT_SECRET environment variable is required');
 }
@@ -49,4 +60,25 @@ module.exports = {
 	ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || undefined,
 	TRUST_PROXY_HOPS: normalizeTrustProxyHops(process.env.TRUST_PROXY_HOPS),
 	EXPO_ACCESS_TOKEN: process.env.EXPO_ACCESS_TOKEN || undefined,
+	NOTIFICATION_WORKER_POLL_MS: normalizeInteger(
+		process.env.NOTIFICATION_WORKER_POLL_MS,
+		'NOTIFICATION_WORKER_POLL_MS',
+		5000,
+		100,
+		60000,
+	),
+	NOTIFICATION_WORKER_BATCH_SIZE: normalizeInteger(
+		process.env.NOTIFICATION_WORKER_BATCH_SIZE,
+		'NOTIFICATION_WORKER_BATCH_SIZE',
+		100,
+		1,
+		100,
+	),
+	NOTIFICATION_WORKER_LEASE_SECONDS: normalizeInteger(
+		process.env.NOTIFICATION_WORKER_LEASE_SECONDS,
+		'NOTIFICATION_WORKER_LEASE_SECONDS',
+		60,
+		10,
+		600,
+	),
 };

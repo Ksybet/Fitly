@@ -18,6 +18,19 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  notification-worker:
+    build:
+      target: production
+    environment:
+      NODE_ENV: production
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
   caddy:
     image: caddy:2.11.4-alpine
     depends_on:

@@ -145,6 +145,40 @@ function nextSleepRun(now, timezone, reminderTime) {
 	return candidate;
 }
 
+function activeDoNotDisturbEnd(now, timezone, from, to) {
+	const current = getZonedParts(now, timezone);
+	const fromTime = parseTime(from);
+	const toTime = parseTime(to);
+	const minute = current.hour * 60 + current.minute;
+	const fromMinute = fromTime.hour * 60 + fromTime.minute;
+	const toMinute = toTime.hour * 60 + toTime.minute;
+
+	if (fromMinute === toMinute) {
+		return localDateTimeToDate({
+			...addLocalDays(current, 1),
+			...toTime,
+			second: 0,
+		}, timezone);
+	}
+
+	const overnight = fromMinute > toMinute;
+	const active = overnight
+		? minute >= fromMinute || minute < toMinute
+		: minute >= fromMinute && minute < toMinute;
+	if (!active) {
+		return null;
+	}
+
+	const endDate = overnight && minute >= fromMinute
+		? addLocalDays(current, 1)
+		: current;
+	return localDateTimeToDate({
+		...endDate,
+		...toTime,
+		second: 0,
+	}, timezone);
+}
+
 module.exports = {
 	getZonedParts,
 	offsetAt,
@@ -153,4 +187,5 @@ module.exports = {
 	nextWaterRun,
 	parseTime,
 	nextSleepRun,
+	activeDoNotDisturbEnd,
 };
