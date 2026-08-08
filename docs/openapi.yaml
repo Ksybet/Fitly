@@ -5691,14 +5691,17 @@ components:
       properties:
         enabled:
           type: boolean
+          description: Главный переключатель push-доставки; история значимых событий сохраняется.
         waterEnabled:
           type: boolean
+          description: Включает генерацию напоминаний о воде; требует `waterIntervalMinutes`.
         waterIntervalMinutes:
           type: integer
           minimum: 30
           maximum: 1440
         sleepEnabled:
           type: boolean
+          description: Включает генерацию напоминаний о сне; требует `sleepReminderTime`.
         sleepReminderTime:
           type: string
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
@@ -5711,8 +5714,10 @@ components:
           maximum: 10080
         achievementsEnabled:
           type: boolean
+          description: Управляет push о достижениях; сами достижения всегда сохраняются в истории.
         doNotDisturbEnabled:
           type: boolean
+          description: При включении требует одновременно `doNotDisturbFrom` и `doNotDisturbTo`.
         doNotDisturbFrom:
           type: string
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'

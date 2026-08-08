@@ -2,6 +2,12 @@ jest.mock('../../src/modules/settings/settings.repository', () => ({
 	getSettings: jest.fn(),
 	updateSettings: jest.fn(),
 }));
+jest.mock('../../src/utils/db-transaction', () => ({
+	withTransaction: jest.fn(callback => callback({ query: jest.fn() })),
+}));
+jest.mock('../../src/modules/notifications/notification-schedules.service', () => ({
+	syncRecurringSchedules: jest.fn(),
+}));
 
 const settingsRepository = require('../../src/modules/settings/settings.repository');
 const settingsService = require('../../src/modules/settings/settings.service');
@@ -40,6 +46,7 @@ describe('settings service', () => {
 	});
 
 	test('passes a partial update to the repository and maps the result', async () => {
+		settingsRepository.getSettings.mockResolvedValueOnce(settingsRow());
 		settingsRepository.updateSettings.mockResolvedValueOnce(settingsRow({
 			timezone: 'Europe/Tallinn',
 			notifications: {
@@ -58,9 +65,28 @@ describe('settings service', () => {
 				waterEnabled: false,
 			},
 		});
-		expect(settingsRepository.updateSettings).toHaveBeenCalledWith(7, {
-			timezone: 'Europe/Tallinn',
-			notifications: { waterEnabled: false },
+		expect(settingsRepository.updateSettings).toHaveBeenCalledWith(
+			7,
+			{
+				timezone: 'Europe/Tallinn',
+				notifications: { waterEnabled: false },
+			},
+			expect.any(Object),
+		);
+	});
+
+	test('rejects enabling water reminders without an effective interval', async () => {
+		settingsRepository.getSettings.mockResolvedValueOnce(settingsRow());
+
+		await expect(settingsService.updateSettings(7, {
+			notifications: { waterEnabled: true },
+		})).rejects.toMatchObject({
+			status: 400,
+			details: [expect.objectContaining({
+				field: 'notifications.waterIntervalMinutes',
+				code: 'REQUIRED',
+			})],
 		});
+		expect(settingsRepository.updateSettings).not.toHaveBeenCalled();
 	});
 });

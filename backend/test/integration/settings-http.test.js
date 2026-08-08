@@ -67,6 +67,7 @@ describe('Settings PostgreSQL contracts', () => {
 				notifications: {
 					enabled: true,
 					waterEnabled: true,
+					waterIntervalMinutes: 120,
 				},
 			})
 			.expect(200);
