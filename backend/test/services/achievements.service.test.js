@@ -3,10 +3,15 @@ jest.mock('../../src/modules/achievements/achievements.repository', () => ({
 	findActiveAchievementWithProgress: jest.fn(),
 	awardReachedExerciseRepetitionAchievements: jest.fn(),
 }));
+jest.mock('../../src/modules/notifications/notifications.repository', () => ({
+	createNotification: jest.fn(),
+}));
 
 const repository =
 	require('../../src/modules/achievements/achievements.repository');
 const service = require('../../src/modules/achievements/achievements.service');
+const notificationsRepository =
+	require('../../src/modules/notifications/notifications.repository');
 
 function achievementRow(overrides = {}) {
 	return {
@@ -171,5 +176,21 @@ describe('achievements service', () => {
 				earnedAt: '2026-08-01T10:00:00.000Z',
 			},
 		]);
+		expect(notificationsRepository.createNotification).toHaveBeenCalledTimes(2);
+		expect(notificationsRepository.createNotification).toHaveBeenNthCalledWith(
+			1,
+			{
+				userId: 7,
+				type: 'achievement',
+				title: 'Новое достижение',
+				body: 'Вы получили достижение «50 приседаний»',
+				payload: {
+					achievementId: 1,
+					achievementCode: 'SQUATS_50',
+				},
+				deduplicationKey: 'achievement:7:1',
+			},
+			client,
+		);
 	});
 });
