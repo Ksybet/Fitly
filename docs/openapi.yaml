@@ -5594,7 +5594,7 @@ components:
           minimum: 0
           maximum: 10080
           default: 30
-          description: По умолчанию при создании напоминание за 30 минут.
+          description: Если не передано, используется настройка пользователя, затем fallback 30 минут. После создания значение плана является окончательным.
     WorkoutPlanUpdateRequest:
       type: object
       additionalProperties: false
@@ -5712,6 +5712,7 @@ components:
           type: integer
           minimum: 0
           maximum: 10080
+          description: Значение по умолчанию для новых планов тренировок; существующие планы не пересчитываются.
         achievementsEnabled:
           type: boolean
           description: Управляет push о достижениях; сами достижения всегда сохраняются в истории.

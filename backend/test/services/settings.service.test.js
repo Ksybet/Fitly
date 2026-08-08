@@ -6,7 +6,7 @@ jest.mock('../../src/utils/db-transaction', () => ({
 	withTransaction: jest.fn(callback => callback({ query: jest.fn() })),
 }));
 jest.mock('../../src/modules/notifications/notification-schedules.service', () => ({
-	syncRecurringSchedules: jest.fn(),
+	syncSettingsSchedules: jest.fn(),
 }));
 
 const settingsRepository = require('../../src/modules/settings/settings.repository');

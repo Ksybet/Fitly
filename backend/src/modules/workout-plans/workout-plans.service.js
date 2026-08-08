@@ -10,6 +10,9 @@ const {
 const { ApiError } = require('../../utils/api-error');
 const { toWorkoutPlanDto } = require('./workout-plans.mapper');
 const { withTransaction } = require('../../utils/db-transaction');
+const settingsRepository = require('../settings/settings.repository');
+const notificationSchedulesService =
+	require('../notifications/notification-schedules.service');
 
 const DEFAULT_REMINDER_MINUTES_BEFORE = 30;
 const MAX_REMINDER_MINUTES_BEFORE = 10080;
@@ -160,22 +163,35 @@ async function createWorkoutPlan(userId, input) {
 	const normalizedUserId = ensureValidUserId(userId);
 	const workoutId = normalizePositiveInteger(input.workoutId, 'workoutId');
 	const scheduledAt = normalizeScheduledAt(input.scheduledAt);
-	const reminderMinutesBefore = normalizeReminder(
-		input.reminderMinutesBefore,
-		DEFAULT_REMINDER_MINUTES_BEFORE,
-	);
 
-	await ensureWorkoutAvailable(workoutId);
-	const record = await workoutPlansRepository.createWorkoutPlan(
-		normalizedUserId,
-		{
-			workoutId,
-			scheduledAt,
-			reminderMinutesBefore,
-		},
-	);
-
-	return toWorkoutPlanDto(record);
+	return withTransaction(async client => {
+		await ensureWorkoutAvailable(workoutId, client);
+		const settings = await settingsRepository.getSettings(
+			normalizedUserId,
+			client,
+		);
+		const reminderMinutesBefore = normalizeReminder(
+			input.reminderMinutesBefore,
+			settings.notifications?.workoutReminderMinutesBefore
+				?? DEFAULT_REMINDER_MINUTES_BEFORE,
+		);
+		const record = await workoutPlansRepository.createWorkoutPlan(
+			normalizedUserId,
+			{
+				workoutId,
+				scheduledAt,
+				reminderMinutesBefore,
+			},
+			client,
+		);
+		await notificationSchedulesService.syncWorkoutSchedule(
+			client,
+			normalizedUserId,
+			record,
+			settings,
+		);
+		return toWorkoutPlanDto(record);
+	});
 }
 
 async function updateWorkoutPlan(userId, planId, input) {
@@ -218,6 +234,16 @@ async function updateWorkoutPlan(userId, planId, input) {
 				code: 'WORKOUT_PLAN_NOT_EDITABLE',
 			});
 		}
+		const settings = await settingsRepository.getSettings(
+			normalizedUserId,
+			client,
+		);
+		await notificationSchedulesService.syncWorkoutSchedule(
+			client,
+			normalizedUserId,
+			record,
+			settings,
+		);
 
 		return toWorkoutPlanDto(record);
 	});
@@ -251,6 +277,11 @@ async function cancelWorkoutPlan(userId, planId) {
 				code: 'WORKOUT_PLAN_NOT_EDITABLE',
 			});
 		}
+		await notificationSchedulesService.cancelWorkoutSchedule(
+			client,
+			normalizedUserId,
+			normalizedPlanId,
+		);
 
 		return toWorkoutPlanDto(record);
 	});

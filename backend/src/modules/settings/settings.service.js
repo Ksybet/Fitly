@@ -71,7 +71,7 @@ async function updateSettings(userId, updates) {
 			updates,
 			client,
 		);
-		await notificationSchedulesService.syncRecurringSchedules(
+		await notificationSchedulesService.syncSettingsSchedules(
 			client,
 			normalizedUserId,
 			settings,

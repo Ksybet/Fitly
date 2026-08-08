@@ -10,11 +10,21 @@ jest.mock('../../src/utils/db-transaction', () => ({
 		return callback(pool);
 	},
 }));
+jest.mock('../../src/modules/settings/settings.repository', () => ({
+	getSettings: jest.fn(),
+	getTimezoneByUserId: jest.fn(),
+}));
+jest.mock('../../src/modules/notifications/notification-schedules.service', () => ({
+	syncWorkoutSchedule: jest.fn(),
+	cancelWorkoutSchedule: jest.fn(),
+}));
 
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const app = require('../../src/app');
 const { pool } = require('../../src/config/db');
+const settingsRepository =
+	require('../../src/modules/settings/settings.repository');
 
 const requestIdPattern = /^req_[0-9a-f]{32}$/;
 
@@ -103,6 +113,11 @@ describe('Workout plans HTTP contracts', () => {
 		jest.clearAllMocks();
 		jest.spyOn(Date, 'now')
 			.mockReturnValue(Date.parse('2026-07-31T12:00:00.000Z'));
+		settingsRepository.getSettings.mockResolvedValue({
+			timezone: 'UTC',
+			notifications: { workoutsEnabled: true },
+		});
+		settingsRepository.getTimezoneByUserId.mockResolvedValue('Europe/Moscow');
 	});
 
 	afterEach(() => {
@@ -111,7 +126,6 @@ describe('Workout plans HTTP contracts', () => {
 
 	test('GET returns the user calendar with filters and stable ordering', async () => {
 		pool.query
-			.mockResolvedValueOnce({ rows: [{ timezone: 'Europe/Moscow' }] })
 			.mockResolvedValueOnce({
 				rows: [
 					workoutPlanRow(),
@@ -136,14 +150,14 @@ describe('Workout plans HTTP contracts', () => {
 					.toBe('Силовая для рук');
 				expect(response.body.meta.requestId).toMatch(requestIdPattern);
 			});
-		expect(pool.query.mock.calls[1][1]).toEqual([
+		expect(pool.query.mock.calls[0][1]).toEqual([
 			2,
 			'Europe/Moscow',
 			'2026-08-10',
 			'2026-08-11',
 			'scheduled',
 		]);
-		expect(pool.query.mock.calls[1][0])
+		expect(pool.query.mock.calls[0][0])
 			.toContain('ORDER BY wp.scheduled_at ASC, wp.id ASC');
 	});
 

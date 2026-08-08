@@ -31,6 +31,84 @@ async function syncRecurringSchedules(queryable, userId, settings, now) {
 	return { water, sleep };
 }
 
+function workoutReminderAt(workoutPlan) {
+	return new Date(
+		new Date(workoutPlan.scheduledAt).getTime()
+		- Number(workoutPlan.reminderMinutesBefore) * 60 * 1000,
+	);
+}
+
+async function syncWorkoutSchedule(
+	queryable,
+	userId,
+	workoutPlan,
+	settings,
+	now = new Date(),
+) {
+	const preferences = settings.notifications ?? {};
+	const nextRunAt = workoutReminderAt(workoutPlan);
+	if (
+		preferences.workoutsEnabled !== true
+		|| nextRunAt.getTime() <= now.getTime()
+	) {
+		await schedulesRepository.cancelWorkoutSchedule(
+			queryable,
+			userId,
+			workoutPlan.id,
+		);
+		return null;
+	}
+
+	return schedulesRepository.upsertWorkoutSchedule(
+		queryable,
+		userId,
+		workoutPlan,
+		nextRunAt,
+	);
+}
+
+async function syncWorkoutSchedules(queryable, userId, settings, now = new Date()) {
+	if (settings.notifications?.workoutsEnabled !== true) {
+		await schedulesRepository.cancelAllWorkoutSchedules(queryable, userId);
+		return [];
+	}
+	const workoutPlans = await schedulesRepository.listFutureWorkoutPlans(
+		queryable,
+		userId,
+		now,
+	);
+	const schedules = [];
+	for (const workoutPlan of workoutPlans) {
+		const schedule = await syncWorkoutSchedule(
+			queryable,
+			userId,
+			workoutPlan,
+			settings,
+			now,
+		);
+		if (schedule) {
+			schedules.push(schedule);
+		}
+	}
+	return schedules;
+}
+
+async function syncSettingsSchedules(queryable, userId, settings, now) {
+	const recurring = await syncRecurringSchedules(
+		queryable,
+		userId,
+		settings,
+		now,
+	);
+	const workouts = await syncWorkoutSchedules(
+		queryable,
+		userId,
+		settings,
+		now,
+	);
+	return { ...recurring, workouts };
+}
+
 async function syncSleepSchedule(queryable, userId, settings, now = new Date()) {
 	const preferences = settings.notifications ?? {};
 	if (preferences.sleepEnabled !== true) {
@@ -59,4 +137,8 @@ module.exports = {
 	syncWaterSchedule,
 	syncSleepSchedule,
 	syncRecurringSchedules,
+	workoutReminderAt,
+	syncWorkoutSchedule,
+	syncWorkoutSchedules,
+	syncSettingsSchedules,
 };

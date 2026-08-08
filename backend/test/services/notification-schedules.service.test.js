@@ -2,6 +2,10 @@ jest.mock('../../src/modules/notifications/notification-schedules.repository', (
 	upsertRecurringSchedule: jest.fn(),
 	cancelRecurringSchedule: jest.fn(),
 	listRecurringSettings: jest.fn(),
+	upsertWorkoutSchedule: jest.fn(),
+	cancelWorkoutSchedule: jest.fn(),
+	cancelAllWorkoutSchedules: jest.fn(),
+	listFutureWorkoutPlans: jest.fn(),
 }));
 
 const schedulesRepository = require('../../src/modules/notifications/notification-schedules.repository');
@@ -68,5 +72,46 @@ describe('notification schedules service', () => {
 
 		expect(schedulesRepository.cancelRecurringSchedule)
 			.toHaveBeenCalledWith(client, 7, 'sleep');
+	});
+
+	test('upserts a future workout reminder from the plan value', async () => {
+		schedulesRepository.upsertWorkoutSchedule.mockResolvedValueOnce({ id: '3' });
+		const plan = {
+			id: 9,
+			scheduledAt: new Date('2026-08-08T15:00:00.000Z'),
+			reminderMinutesBefore: 45,
+		};
+
+		await schedulesService.syncWorkoutSchedule(
+			client,
+			7,
+			plan,
+			{ notifications: { workoutsEnabled: true } },
+			new Date('2026-08-08T10:00:00.000Z'),
+		);
+
+		expect(schedulesRepository.upsertWorkoutSchedule).toHaveBeenCalledWith(
+			client,
+			7,
+			plan,
+			new Date('2026-08-08T14:15:00.000Z'),
+		);
+	});
+
+	test('cancels a stale workout reminder', async () => {
+		await schedulesService.syncWorkoutSchedule(
+			client,
+			7,
+			{
+				id: 9,
+				scheduledAt: new Date('2026-08-08T10:30:00.000Z'),
+				reminderMinutesBefore: 60,
+			},
+			{ notifications: { workoutsEnabled: true } },
+			new Date('2026-08-08T10:00:00.000Z'),
+		);
+
+		expect(schedulesRepository.cancelWorkoutSchedule)
+			.toHaveBeenCalledWith(client, 7, 9);
 	});
 });
