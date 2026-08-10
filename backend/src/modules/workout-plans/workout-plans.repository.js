@@ -93,8 +93,8 @@ async function listWorkoutPlans(userId, filters, timezone) {
 	return result.rows;
 }
 
-async function createWorkoutPlan(userId, workoutPlan) {
-	const result = await pool.query(
+async function createWorkoutPlan(userId, workoutPlan, queryable = pool) {
+	const result = await queryable.query(
 		`INSERT INTO workout_plans (
 			user_id,
 			workout_id,
@@ -111,7 +111,7 @@ async function createWorkoutPlan(userId, workoutPlan) {
 		],
 	);
 
-	return getWorkoutPlanById(userId, result.rows[0].id);
+	return getWorkoutPlanById(userId, result.rows[0].id, queryable);
 }
 
 async function updateWorkoutPlan(

@@ -104,6 +104,7 @@ describe('Achievements PostgreSQL HTTP contracts', () => {
 	beforeEach(async () => {
 		await pool.query(
 			`TRUNCATE TABLE
+				notifications,
 				user_achievements,
 				workout_session_exercise_results,
 				workout_sessions,
@@ -208,6 +209,45 @@ describe('Achievements PostgreSQL HTTP contracts', () => {
 			{
 				code: 'SQUATS_150',
 				earnedAt: new Date('2026-08-01T10:45:00.000Z'),
+			},
+		]);
+		const notifications = await pool.query(
+			`SELECT type, title, body, status, payload
+			 FROM notifications
+			 WHERE user_id = $1
+			 ORDER BY (payload->>'achievementId')::integer ASC`,
+			[userId],
+		);
+		expect(notifications.rows).toEqual([
+			{
+				type: 'achievement',
+				title: 'Новое достижение',
+				body: 'Вы получили достижение «50 приседаний»',
+				status: 'created',
+				payload: {
+					achievementId: 1,
+					achievementCode: 'SQUATS_50',
+				},
+			},
+			{
+				type: 'achievement',
+				title: 'Новое достижение',
+				body: 'Вы получили достижение «100 приседаний»',
+				status: 'created',
+				payload: {
+					achievementId: 2,
+					achievementCode: 'SQUATS_100',
+				},
+			},
+			{
+				type: 'achievement',
+				title: 'Новое достижение',
+				body: 'Вы получили достижение «150 приседаний»',
+				status: 'created',
+				payload: {
+					achievementId: 3,
+					achievementCode: 'SQUATS_150',
+				},
 			},
 		]);
 

@@ -5594,7 +5594,7 @@ components:
           minimum: 0
           maximum: 10080
           default: 30
-          description: По умолчанию при создании напоминание за 30 минут.
+          description: Если не передано, используется настройка пользователя, затем fallback 30 минут. После создания значение плана является окончательным.
     WorkoutPlanUpdateRequest:
       type: object
       additionalProperties: false
@@ -5691,28 +5691,36 @@ components:
       properties:
         enabled:
           type: boolean
+          description: Главный переключатель push-доставки; история значимых событий сохраняется.
         waterEnabled:
           type: boolean
+          description: Включает генерацию напоминаний о воде; требует `waterIntervalMinutes`.
         waterIntervalMinutes:
           type: integer
           minimum: 30
           maximum: 1440
+          description: Интервал сетки напоминаний, отсчитываемой от локальной полуночи пользователя.
         sleepEnabled:
           type: boolean
+          description: Включает генерацию напоминаний о сне; требует `sleepReminderTime`.
         sleepReminderTime:
           type: string
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
           example: '22:30'
         workoutsEnabled:
           type: boolean
+          description: Включает генерацию серверных напоминаний о запланированных тренировках.
         workoutReminderMinutesBefore:
           type: integer
           minimum: 0
           maximum: 10080
+          description: Значение по умолчанию для новых планов тренировок; существующие планы не пересчитываются.
         achievementsEnabled:
           type: boolean
+          description: Управляет push о достижениях; сами достижения всегда сохраняются в истории.
         doNotDisturbEnabled:
           type: boolean
+          description: При включении требует одновременно `doNotDisturbFrom` и `doNotDisturbTo`. В этот период push для water, sleep и workout пропускается, а achievement, system и support откладывается до конца интервала; история сохраняется.
         doNotDisturbFrom:
           type: string
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
@@ -5783,6 +5791,7 @@ components:
           type: string
           minLength: 20
           maxLength: 4096
+          description: Expo Push Token, полученный мобильным клиентом через `getExpoPushTokenAsync`.
         appVersion:
           type: string
           maxLength: 30
@@ -5806,6 +5815,7 @@ components:
       enum: [water, sleep, workout, achievement, system, support]
     NotificationStatus:
       type: string
+      description: Публичный статус записи истории. Ошибки отдельных push-устройств хранятся во внутренних delivery-статусах и не добавляют значение `failed` в этот enum.
       enum: [created, scheduled, sent, read, cancelled]
     Notification:
       type: object

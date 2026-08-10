@@ -10,15 +10,15 @@ const settingsColumns = `
 	updated_at AS "updatedAt"
 `;
 
-async function getSettings(userId) {
-	await pool.query(
+async function getSettings(userId, queryable = pool) {
+	await queryable.query(
 		`INSERT INTO user_settings (user_id)
 		 VALUES ($1)
 		 ON CONFLICT (user_id) DO NOTHING`,
 		[userId],
 	);
 
-	const result = await pool.query(
+	const result = await queryable.query(
 		`SELECT ${settingsColumns}
 		 FROM user_settings
 		 WHERE user_id = $1`,
@@ -28,8 +28,8 @@ async function getSettings(userId) {
 	return result.rows[0];
 }
 
-async function updateSettings(userId, settings) {
-	const result = await pool.query(
+async function updateSettings(userId, settings, queryable = pool) {
+	const result = await queryable.query(
 		`INSERT INTO user_settings (
 			user_id,
 			theme,

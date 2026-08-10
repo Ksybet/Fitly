@@ -62,3 +62,23 @@ services:
     init: true
     restart: unless-stopped
     stop_grace_period: 30s
+
+  notification-worker:
+    build:
+      context: .
+      target: production
+    command: ["npm", "run", "start:worker"]
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:-}
+      NOTIFICATION_WORKER_POLL_MS: ${NOTIFICATION_WORKER_POLL_MS:-5000}
+      NOTIFICATION_WORKER_BATCH_SIZE: ${NOTIFICATION_WORKER_BATCH_SIZE:-100}
+      NOTIFICATION_WORKER_LEASE_SECONDS: ${NOTIFICATION_WORKER_LEASE_SECONDS:-60}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 30s

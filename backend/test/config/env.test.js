@@ -68,4 +68,21 @@ describe('environment configuration', () => {
 			'TRUST_PROXY_HOPS must be an integer between 0 and 10',
 		);
 	});
+
+	test('validates notification worker limits', () => {
+		process.env.JWT_SECRET = 'secret';
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
+		process.env.NOTIFICATION_WORKER_BATCH_SIZE = '50';
+		process.env.NOTIFICATION_WORKER_POLL_MS = '1000';
+		jest.resetModules();
+		const env = require('../../src/config/env');
+		expect(env.NOTIFICATION_WORKER_BATCH_SIZE).toBe(50);
+		expect(env.NOTIFICATION_WORKER_POLL_MS).toBe(1000);
+
+		process.env.NOTIFICATION_WORKER_BATCH_SIZE = '101';
+		jest.resetModules();
+		expect(() => require('../../src/config/env')).toThrow(
+			'NOTIFICATION_WORKER_BATCH_SIZE must be an integer between 1 and 100',
+		);
+	});
 });

@@ -3,6 +3,12 @@ jest.mock('../../src/modules/settings/settings.repository', () => ({
 	updateSettings: jest.fn(),
 	getTimezoneByUserId: jest.fn(),
 }));
+jest.mock('../../src/utils/db-transaction', () => ({
+	withTransaction: jest.fn(callback => callback({ query: jest.fn() })),
+}));
+jest.mock('../../src/modules/notifications/notification-schedules.service', () => ({
+	syncSettingsSchedules: jest.fn(),
+}));
 
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -63,6 +69,9 @@ describe('settings HTTP contracts', () => {
 	});
 
 	test('PATCH /api/v1/settings supports partial notification updates', async () => {
+		settingsRepository.getSettings.mockResolvedValueOnce(settingsRow({
+			notifications: { enabled: true, waterEnabled: true, waterIntervalMinutes: 120 },
+		}));
 		settingsRepository.updateSettings.mockResolvedValueOnce(settingsRow({
 			timezone: 'Europe/Tallinn',
 			notifications: {
@@ -89,10 +98,14 @@ describe('settings HTTP contracts', () => {
 				});
 			});
 
-		expect(settingsRepository.updateSettings).toHaveBeenCalledWith(1, {
-			timezone: 'Europe/Tallinn',
-			notifications: { waterEnabled: false },
-		});
+		expect(settingsRepository.updateSettings).toHaveBeenCalledWith(
+			1,
+			{
+				timezone: 'Europe/Tallinn',
+				notifications: { waterEnabled: false },
+			},
+			expect.any(Object),
+		);
 	});
 
 	test.each([

@@ -349,4 +349,64 @@ describe('Workout plans PostgreSQL HTTP contracts', () => {
 		);
 		expect(planCount.rows[0].count).toBe(0);
 	});
+
+	test('uses the global reminder and keeps the workout schedule synchronized', async () => {
+		const userId = await createUser('plan-reminders@example.com');
+		const workoutId = await createWorkout('Тренировка с напоминанием');
+		await pool.query(
+			`UPDATE user_settings
+			 SET notifications = $2::jsonb
+			 WHERE user_id = $1`,
+			[userId, JSON.stringify({
+				workoutsEnabled: true,
+				workoutReminderMinutesBefore: 90,
+			})],
+		);
+		const token = authorization(userId);
+
+		const created = await request(app)
+			.post('/api/v1/workout-plans')
+			.set('Authorization', token)
+			.send({ workoutId, scheduledAt: '2026-08-10T15:00:00Z' })
+			.expect(201);
+		expect(created.body.data.reminderMinutesBefore).toBe(90);
+
+		let schedule = await pool.query(
+			`SELECT status, next_run_at AS "nextRunAt"
+			 FROM notification_schedules
+			 WHERE workout_plan_id = $1`,
+			[created.body.data.id],
+		);
+		expect(schedule.rows).toEqual([{
+			status: 'active',
+			nextRunAt: new Date('2026-08-10T13:30:00.000Z'),
+		}]);
+
+		await request(app)
+			.patch(`/api/v1/workout-plans/${created.body.data.id}`)
+			.set('Authorization', token)
+			.send({ workoutId, scheduledAt: '2026-08-10T16:00:00Z' })
+			.expect(200);
+		schedule = await pool.query(
+			`SELECT status, next_run_at AS "nextRunAt"
+			 FROM notification_schedules
+			 WHERE workout_plan_id = $1`,
+			[created.body.data.id],
+		);
+		expect(schedule.rows[0]).toEqual({
+			status: 'active',
+			nextRunAt: new Date('2026-08-10T14:30:00.000Z'),
+		});
+
+		await request(app)
+			.delete(`/api/v1/workout-plans/${created.body.data.id}`)
+			.set('Authorization', token)
+			.expect(200);
+		schedule = await pool.query(
+			`SELECT status FROM notification_schedules
+			 WHERE workout_plan_id = $1`,
+			[created.body.data.id],
+		);
+		expect(schedule.rows[0].status).toBe('cancelled');
+	});
 });

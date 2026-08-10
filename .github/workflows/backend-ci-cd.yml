@@ -61,7 +61,8 @@ jobs:
             up \
             --build \
             --abort-on-container-exit \
-            --exit-code-from api
+            --exit-code-from api \
+            api
 
       - name: Show logs on failure
         if: failure()

@@ -1,6 +1,8 @@
 const achievementsRepository = require('./achievements.repository');
 const { ApiError } = require('../../utils/api-error');
 const { ensureValidUserId } = require('../../utils/validation');
+const notificationsRepository =
+	require('../notifications/notifications.repository');
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_PAGE_SIZE = 20;
@@ -144,7 +146,23 @@ async function evaluateAndAward({
 			earnedAt,
 		);
 
-	return awarded.map(toNewlyAwardedAchievement);
+	const achievements = awarded.map(toNewlyAwardedAchievement);
+	for (const achievement of achievements) {
+		await notificationsRepository.createNotification({
+			userId: normalizedUserId,
+			type: 'achievement',
+			title: 'Новое достижение',
+			body: `Вы получили достижение «${achievement.title}»`,
+			payload: {
+				achievementId: achievement.id,
+				achievementCode: achievement.code,
+			},
+			deduplicationKey:
+				`achievement:${normalizedUserId}:${achievement.id}`,
+		}, client);
+	}
+
+	return achievements;
 }
 
 module.exports = {

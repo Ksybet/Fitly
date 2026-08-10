@@ -35,3 +35,15 @@ services:
     healthcheck:
       disable: true
     restart: "no"
+
+  notification-worker:
+    build:
+      target: test
+    command: ["node", "-e", "process.exit(0)"]
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: ${TEST_DATABASE_URL:?TEST_DATABASE_URL is required}
+    depends_on:
+      migrate:
+        condition: service_healthy
+    restart: "no"

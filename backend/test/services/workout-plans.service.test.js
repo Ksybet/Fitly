@@ -13,6 +13,13 @@ jest.mock('../../src/modules/workouts/workouts.repository', () => ({
 jest.mock('../../src/modules/settings/user-local-date.service', () => ({
 	getUserTimezone: jest.fn(),
 }));
+jest.mock('../../src/modules/settings/settings.repository', () => ({
+	getSettings: jest.fn(),
+}));
+jest.mock('../../src/modules/notifications/notification-schedules.service', () => ({
+	syncWorkoutSchedule: jest.fn(),
+	cancelWorkoutSchedule: jest.fn(),
+}));
 const mockTransactionClient = { query: jest.fn() };
 jest.mock('../../src/utils/db-transaction', () => ({
 	withTransaction: jest.fn(callback => callback(mockTransactionClient)),
@@ -27,6 +34,10 @@ const {
 } = require('../../src/modules/settings/user-local-date.service');
 const workoutPlansService =
 	require('../../src/modules/workout-plans/workout-plans.service');
+const settingsRepository =
+	require('../../src/modules/settings/settings.repository');
+const notificationSchedulesService =
+	require('../../src/modules/notifications/notification-schedules.service');
 
 function workoutPlanRow(overrides = {}) {
 	return {
@@ -60,6 +71,10 @@ describe('workout plans service', () => {
 		workoutsRepository.getActiveWorkoutById.mockResolvedValue({ id: 3 });
 		workoutPlansRepository.hasActiveWorkoutSession
 			.mockResolvedValue(false);
+		settingsRepository.getSettings.mockResolvedValue({
+			timezone: 'Europe/Moscow',
+			notifications: { workoutsEnabled: true },
+		});
 	});
 
 	afterEach(() => {
@@ -119,7 +134,8 @@ describe('workout plans service', () => {
 			id: 7,
 			reminderMinutesBefore: 30,
 		});
-		expect(workoutsRepository.getActiveWorkoutById).toHaveBeenCalledWith(3);
+		expect(workoutsRepository.getActiveWorkoutById)
+			.toHaveBeenCalledWith(3, mockTransactionClient);
 		expect(workoutPlansRepository.createWorkoutPlan).toHaveBeenCalledWith(
 			2,
 			{
@@ -127,6 +143,40 @@ describe('workout plans service', () => {
 				scheduledAt: '2026-08-10T18:00:00+03:00',
 				reminderMinutesBefore: 30,
 			},
+			mockTransactionClient,
+		);
+		expect(notificationSchedulesService.syncWorkoutSchedule)
+			.toHaveBeenCalledWith(
+				mockTransactionClient,
+				2,
+				expect.objectContaining({ id: 7 }),
+				expect.objectContaining({
+					notifications: { workoutsEnabled: true },
+				}),
+			);
+	});
+
+	test('uses the global workout reminder as the create default', async () => {
+		settingsRepository.getSettings.mockResolvedValueOnce({
+			timezone: 'UTC',
+			notifications: {
+				workoutsEnabled: true,
+				workoutReminderMinutesBefore: 90,
+			},
+		});
+		workoutPlansRepository.createWorkoutPlan.mockResolvedValueOnce(
+			workoutPlanRow({ reminderMinutesBefore: 90 }),
+		);
+
+		await workoutPlansService.createWorkoutPlan(2, {
+			workoutId: 3,
+			scheduledAt: '2026-08-10T15:00:00Z',
+		});
+
+		expect(workoutPlansRepository.createWorkoutPlan).toHaveBeenCalledWith(
+			2,
+			expect.objectContaining({ reminderMinutesBefore: 90 }),
+			mockTransactionClient,
 		);
 	});
 
@@ -241,6 +291,8 @@ describe('workout plans service', () => {
 			});
 		expect(workoutPlansRepository.cancelWorkoutPlan)
 			.toHaveBeenCalledWith(2, 7, mockTransactionClient);
+		expect(notificationSchedulesService.cancelWorkoutSchedule)
+			.toHaveBeenCalledWith(mockTransactionClient, 2, 7);
 	});
 
 	test.each([
