@@ -84,10 +84,10 @@ describe('notification worker PostgreSQL coordination', () => {
 		);
 		const notification = await pool.query(
 			`INSERT INTO notifications (
-				user_id, type, title, body, deduplication_key
-			 ) VALUES ($1, 'water', 'Water', 'Drink water', 'water:worker')
+				user_id, type, title, body, deduplication_key, created_at
+			 ) VALUES ($1, 'water', 'Water', 'Drink water', 'water:worker', $2)
 			 RETURNING id`,
-			[userId],
+			[userId, now],
 		);
 		const claimed = await workerRepository.claimUnqueuedNotifications(
 			now, 10, 60,

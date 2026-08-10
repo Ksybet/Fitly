@@ -30,10 +30,13 @@ describe('Push devices PostgreSQL contracts', () => {
 			 VALUES
 				('device-one@example.com', 'not-used', 'user', TRUE),
 				('device-two@example.com', 'not-used', 'user', TRUE)
-			 RETURNING id
-			 ORDER BY id`,
+			 RETURNING id, email`,
 		);
-		[firstUserId, secondUserId] = users.rows.map(row => row.id);
+		const userIdsByEmail = new Map(
+			users.rows.map(row => [row.email, row.id]),
+		);
+		firstUserId = userIdsByEmail.get('device-one@example.com');
+		secondUserId = userIdsByEmail.get('device-two@example.com');
 	});
 
 	afterAll(async () => closeDatabase());

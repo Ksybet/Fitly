@@ -98,6 +98,7 @@ describe('Settings PostgreSQL contracts', () => {
 			notifications: {
 				enabled: true,
 				waterEnabled: false,
+				waterIntervalMinutes: 120,
 			},
 		}]);
 	});

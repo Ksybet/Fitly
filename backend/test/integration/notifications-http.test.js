@@ -28,9 +28,13 @@ describe('Notifications PostgreSQL contracts', () => {
 			 VALUES
 				('notification-one@example.com', 'not-used', 'user', TRUE),
 				('notification-two@example.com', 'not-used', 'user', TRUE)
-			 RETURNING id ORDER BY id`,
+			 RETURNING id, email`,
 		);
-		[userId, otherUserId] = users.rows.map(row => row.id);
+		const userIdsByEmail = new Map(
+			users.rows.map(row => [row.email, row.id]),
+		);
+		userId = userIdsByEmail.get('notification-one@example.com');
+		otherUserId = userIdsByEmail.get('notification-two@example.com');
 
 		await pool.query(
 			`INSERT INTO notifications (

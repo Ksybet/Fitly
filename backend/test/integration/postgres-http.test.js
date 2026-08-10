@@ -8,6 +8,10 @@ const appTables = [
 	'achievements',
 	'auth_sessions',
 	'exercises',
+	'notification_deliveries',
+	'notification_schedules',
+	'notifications',
+	'push_devices',
 	'user_settings',
 	'weight_entries',
 	'workout_exercises',
@@ -75,7 +79,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(18);
+		expect(cascadeResult.rows[0].count).toBe(23);
 	});
 
 	test('seeds squat achievements and protects awarded records', async () => {
