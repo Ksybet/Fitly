@@ -114,4 +114,13 @@ describe('notification schedules service', () => {
 		expect(schedulesRepository.cancelWorkoutSchedule)
 			.toHaveBeenCalledWith(client, 7, 9);
 	});
+
+	test('cancels a workout reminder by plan', async () => {
+		schedulesRepository.cancelWorkoutSchedule.mockResolvedValueOnce(1);
+
+		await expect(schedulesService.cancelWorkoutSchedule(client, 7, 9))
+			.resolves.toBe(1);
+		expect(schedulesRepository.cancelWorkoutSchedule)
+			.toHaveBeenCalledWith(client, 7, 9);
+	});
 });

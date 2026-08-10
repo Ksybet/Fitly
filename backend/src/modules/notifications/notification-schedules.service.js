@@ -1,7 +1,12 @@
 const schedulesRepository = require('./notification-schedules.repository');
 const { nextWaterRun, nextSleepRun } = require('./notification-time');
 
-async function syncWaterSchedule(queryable, userId, settings, now = new Date()) {
+async function syncWaterSchedule(
+	queryable,
+	userId,
+	settings,
+	now = new Date(Date.now()),
+) {
 	const preferences = settings.notifications ?? {};
 	if (preferences.waterEnabled !== true) {
 		await schedulesRepository.cancelRecurringSchedule(
@@ -43,7 +48,7 @@ async function syncWorkoutSchedule(
 	userId,
 	workoutPlan,
 	settings,
-	now = new Date(),
+	now = new Date(Date.now()),
 ) {
 	const preferences = settings.notifications ?? {};
 	const nextRunAt = workoutReminderAt(workoutPlan);
@@ -67,7 +72,20 @@ async function syncWorkoutSchedule(
 	);
 }
 
-async function syncWorkoutSchedules(queryable, userId, settings, now = new Date()) {
+async function cancelWorkoutSchedule(queryable, userId, workoutPlanId) {
+	return schedulesRepository.cancelWorkoutSchedule(
+		queryable,
+		userId,
+		workoutPlanId,
+	);
+}
+
+async function syncWorkoutSchedules(
+	queryable,
+	userId,
+	settings,
+	now = new Date(Date.now()),
+) {
 	if (settings.notifications?.workoutsEnabled !== true) {
 		await schedulesRepository.cancelAllWorkoutSchedules(queryable, userId);
 		return [];
@@ -109,7 +127,12 @@ async function syncSettingsSchedules(queryable, userId, settings, now) {
 	return { ...recurring, workouts };
 }
 
-async function syncSleepSchedule(queryable, userId, settings, now = new Date()) {
+async function syncSleepSchedule(
+	queryable,
+	userId,
+	settings,
+	now = new Date(Date.now()),
+) {
 	const preferences = settings.notifications ?? {};
 	if (preferences.sleepEnabled !== true) {
 		await schedulesRepository.cancelRecurringSchedule(
@@ -139,6 +162,7 @@ module.exports = {
 	syncRecurringSchedules,
 	workoutReminderAt,
 	syncWorkoutSchedule,
+	cancelWorkoutSchedule,
 	syncWorkoutSchedules,
 	syncSettingsSchedules,
 };
