@@ -19,6 +19,7 @@ const appTables = [
 	'workouts',
 	'favorites',
 	'daily_tracking',
+	'diary_entries',
 	'mood_entries',
 	'sleep_entries',
 	'water_entries',
@@ -79,7 +80,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(23);
+		expect(cascadeResult.rows[0].count).toBe(24);
 	});
 
 	test('seeds squat achievements and protects awarded records', async () => {
