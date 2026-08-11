@@ -1200,7 +1200,7 @@ paths:
         - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: Приёмы воды
+          description: Приёмы воды в обратном хронологическом порядке
           content:
             application/json:
               schema:
@@ -1213,6 +1213,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/WaterEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Health]
       operationId: addWater
@@ -1283,6 +1285,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -4982,23 +4986,28 @@ components:
           format: date-time
           description: По умолчанию текущее время.
     WaterEntry:
-      allOf:
-        - $ref: '#/components/schemas/WaterEntryRequest'
-        - type: object
-          required: [id, consumedAt, date, createdAt]
-          properties:
-            id:
-              type: integer
-              format: int64
-            consumedAt:
-              type: string
-              format: date-time
-            date:
-              type: string
-              format: date
-            createdAt:
-              type: string
-              format: date-time
+      type: object
+      required: [id, amountMl, consumedAt, date, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        amountMl:
+          type: integer
+          minimum: 1
+          maximum: 20000
+          description: |
+            Обычный приём ограничен 5000 мл. Значение до 20000 мл возможно
+            для дневного агрегата, созданного совместимым `/water/today` API.
+        consumedAt:
+          type: string
+          format: date-time
+        date:
+          type: string
+          format: date
+        createdAt:
+          type: string
+          format: date-time
     StepEntry:
       type: object
       required: [date, steps, updatedAt]

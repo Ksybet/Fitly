@@ -2,6 +2,7 @@ const express = require('express');
 const { authMiddleware } = require('../auth/auth.middleware');
 const weightController = require('../weight/weight.controller');
 const sleepController = require('../sleep/sleep.controller');
+const waterController = require('../water/water.controller');
 const {
 	validateHistoryListQuery,
 	validateEntryId,
@@ -12,6 +13,9 @@ const {
 const {
 	validateSleepEntryRequest,
 } = require('../sleep/sleep.validators');
+const {
+	validateWaterEntryRequest,
+} = require('../water/water.validators');
 
 const router = express.Router();
 
@@ -64,6 +68,28 @@ router.delete(
 	'/sleep/:entryId',
 	validateEntryId,
 	sleepController.deleteEntry,
+);
+
+router.get(
+	'/water',
+	validateHistoryListQuery,
+	waterController.listEntries,
+);
+router.post(
+	'/water',
+	validateWaterEntryRequest,
+	waterController.createEntry,
+);
+router.patch(
+	'/water/:entryId',
+	validateEntryId,
+	validateWaterEntryRequest,
+	waterController.updateEntry,
+);
+router.delete(
+	'/water/:entryId',
+	validateEntryId,
+	waterController.deleteEntry,
 );
 
 module.exports = router;
