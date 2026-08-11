@@ -3203,11 +3203,23 @@ paths:
       description: Только `role=admin`.
       x-requirements: [FR-1101, FITLY-016, FITLY-017, FITLY-055]
       parameters:
-        - $ref: '#/components/parameters/FromDate'
-        - $ref: '#/components/parameters/ToDate'
+        - name: from
+          in: query
+          required: true
+          description: Начальная календарная дата UTC включительно.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          description: Конечная календарная дата UTC включительно.
+          schema:
+            type: string
+            format: date
       responses:
         '200':
-          description: Метрики пользователей, функций и подписок
+          description: Метрики регистрации и активности пользователей
           content:
             application/json:
               schema:
@@ -3218,6 +3230,10 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/AdminAnalytics'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -3240,7 +3256,7 @@ paths:
         - name: status
           in: query
           schema:
-            $ref: '#/components/schemas/UserStatus'
+            $ref: '#/components/schemas/AdminUserStatus'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -3258,6 +3274,10 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/AdminUser'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -4458,6 +4478,9 @@ components:
     UserStatus:
       type: string
       enum: [active, blocked, deleted]
+    AdminUserStatus:
+      type: string
+      enum: [active, blocked]
     User:
       type: object
       required: [id, email, role, status, emailVerified, createdAt]
@@ -6629,17 +6652,9 @@ components:
         changePercent:
           type: number
           nullable: true
-    NamedMetric:
-      type: object
-      required: [name, value]
-      properties:
-        name:
-          type: string
-        value:
-          type: number
     AdminAnalytics:
       type: object
-      required: [from, to, registeredUsers, activeUsers, premiumUsers, popularFeatures]
+      required: [from, to, registeredUsers, activeUsers]
       properties:
         from:
           type: string
@@ -6651,15 +6666,9 @@ components:
           $ref: '#/components/schemas/MetricValue'
         activeUsers:
           $ref: '#/components/schemas/MetricValue'
-        premiumUsers:
-          $ref: '#/components/schemas/MetricValue'
-        popularFeatures:
-          type: array
-          items:
-            $ref: '#/components/schemas/NamedMetric'
     AdminUser:
       type: object
-      required: [id, email, role, status, emailVerified, subscriptionStatus, createdAt, lastLoginAt]
+      required: [id, email, firstName, role, status, emailVerified, createdAt, lastLoginAt]
       properties:
         id:
           type: integer
@@ -6673,11 +6682,9 @@ components:
         role:
           $ref: '#/components/schemas/UserRole'
         status:
-          $ref: '#/components/schemas/UserStatus'
+          $ref: '#/components/schemas/AdminUserStatus'
         emailVerified:
           type: boolean
-        subscriptionStatus:
-          $ref: '#/components/schemas/SubscriptionStatus'
         createdAt:
           type: string
           format: date-time

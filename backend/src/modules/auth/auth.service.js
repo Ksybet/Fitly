@@ -3,7 +3,6 @@ const {
 	findUserByEmail,
 	findUserById,
 	createUser,
-	updateUserAppVersion,
 } = require('../user/user.repository');
 const { ApiError } = require('../../utils/api-error');
 const {
@@ -14,6 +13,7 @@ const {
 } = require('../../utils/token');
 const {
 	createSession,
+	createLoginSession,
 	rotateSession,
 	revokeSession,
 	revokeAllSessions,
@@ -67,6 +67,30 @@ async function issueAuthData(user, appVersion) {
 		...accessTokens,
 		refreshToken,
 		user: toUserDto(user),
+	};
+}
+
+async function issueLoginAuthData(user, appVersion) {
+	const accessTokens = issueAccessToken(user, appVersion);
+	const refreshToken = generateRefreshToken();
+	const loginSession = await createLoginSession({
+		userId: user.id,
+		refreshTokenHash: hashRefreshToken(refreshToken),
+		expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+		appVersion,
+	});
+
+	if (!loginSession) {
+		throw new ApiError(401, 'Unauthorized');
+	}
+
+	return {
+		...accessTokens,
+		refreshToken,
+		user: toUserDto({
+			...user,
+			appVersion: loginSession.appVersion ?? user.appVersion,
+		}),
 	};
 }
 
@@ -147,11 +171,7 @@ async function loginUser({
 		...requestMetadata,
 	});
 
-	const currentUser = appVersion === undefined
-		? user
-		: await updateUserAppVersion(user.id, appVersion);
-
-	return issueAuthData(currentUser, appVersion);
+	return issueLoginAuthData(user, appVersion);
 }
 
 async function registerUser({ email, password, appVersion }) {

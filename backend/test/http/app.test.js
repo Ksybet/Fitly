@@ -1,13 +1,23 @@
-jest.mock('../../src/config/db', () => ({
-	pool: { query: jest.fn() },
-}));
+jest.mock('../../src/config/db', () => {
+	const client = {
+		query: jest.fn(),
+		release: jest.fn(),
+	};
+	return {
+		pool: {
+			query: jest.fn(),
+			connect: jest.fn(),
+		},
+		testClient: client,
+	};
+});
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const app = require('../../src/app');
-const { pool } = require('../../src/config/db');
+const { pool, testClient } = require('../../src/config/db');
 const { ApiError } = require('../../src/utils/api-error');
 const { errorMiddleware } = require('../../src/middlewares/error.middleware');
 
@@ -45,7 +55,13 @@ function expectErrorResponse(response, { code, message, details }) {
 }
 
 describe('HTTP application contracts', () => {
-	beforeEach(() => pool.query.mockReset());
+	beforeEach(() => {
+		pool.query.mockReset();
+		pool.connect.mockReset();
+		testClient.query.mockReset();
+		testClient.release.mockReset();
+		pool.connect.mockResolvedValue(testClient);
+	});
 
 	test('GET /health reports API and database availability', async () => {
 		pool.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
@@ -378,7 +394,7 @@ describe('HTTP application contracts', () => {
 
 	test('an administrator passes the namespace guard and reaches the global 404', async () => {
 		await request(app)
-			.get('/api/v1/admin/analytics/overview')
+			.get('/api/v1/admin/not-implemented')
 			.set(
 				'Authorization',
 				createAuthorization({ userId: 7, role: 'admin' }),
@@ -406,21 +422,17 @@ describe('HTTP application contracts', () => {
 					createdAt: '2026-07-26T10:00:00.000Z',
 				}],
 			})
-			.mockResolvedValueOnce({ rows: [{ id: 1 }] })
+			.mockResolvedValueOnce({ rows: [{ id: 1 }] });
+		testClient.query
+			.mockResolvedValueOnce()
 			.mockResolvedValueOnce({
 				rows: [{
-					id: 7,
-					email: 'admin@example.com',
-					passwordHash,
-					role: 'admin',
-					isActive: true,
-					emailVerified: false,
 					appVersion: '1.2.3',
-					createdAt: '2026-07-26T10:00:00.000Z',
-					updatedAt: '2026-07-26T10:00:00.000Z',
+					lastLoginAt: new Date('2026-08-12T12:00:00.000Z'),
 				}],
 			})
-			.mockResolvedValueOnce({ rows: [{ id: 2 }] });
+			.mockResolvedValueOnce({ rows: [{ id: 2 }] })
+			.mockResolvedValueOnce();
 
 		await request(app)
 			.post('/api/v1/auth/login')

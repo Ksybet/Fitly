@@ -1,7 +1,10 @@
 const { verifyAccessToken } = require('../../utils/token');
 const { ApiError } = require('../../utils/api-error');
+const {
+	recordUserActivity,
+} = require('../user-activity/user-activity.service');
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
 	const authHeader = req.headers.authorization;
 
 	if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -10,8 +13,9 @@ function authMiddleware(req, res, next) {
 
 	const token = authHeader.replace('Bearer ', '');
 
+	let payload;
 	try {
-		const payload = verifyAccessToken(token);
+		payload = verifyAccessToken(token);
 
 		if (
 			!payload
@@ -22,11 +26,19 @@ function authMiddleware(req, res, next) {
 			throw new Error('Invalid access token claims');
 		}
 
-		req.user = payload;
-		next();
 	} catch (error) {
 		return next(new ApiError(401, 'Invalid or expired token'));
 	}
+
+	req.user = payload;
+
+	try {
+		await recordUserActivity(payload.userId);
+	} catch {
+		console.error('Failed to persist authenticated user activity');
+	}
+
+	return next();
 }
 
 function requireRole(...allowedRoles) {

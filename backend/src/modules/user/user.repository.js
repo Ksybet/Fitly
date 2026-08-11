@@ -72,23 +72,9 @@ async function deleteUserById(userId) {
 	return true;
 }
 
-async function updateUserAppVersion(userId, appVersion) {
-	const result = await pool.query(
-		`UPDATE users
-		 SET app_version = $2,
-		     updated_at = CURRENT_TIMESTAMP
-		 WHERE id = $1
-		 RETURNING ${userColumns}`,
-		[Number(userId), appVersion ?? null],
-	);
-
-	return result.rows[0] || null;
-}
-
 module.exports = {
 	findUserByEmail,
 	findUserById,
 	createUser,
 	deleteUserById,
-	updateUserAppVersion,
 };

@@ -45,13 +45,13 @@ function authorization(userId) {
 	return `Bearer ${token}`;
 }
 
-async function runLatestMigration(direction) {
+async function runMigrations(direction, count) {
 	await execFileAsync(
 		process.execPath,
 		[
 			migrationCli,
 			direction,
-			'1',
+			String(count),
 			'--database-url-var',
 			'TEST_DATABASE_URL',
 		],
@@ -352,7 +352,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 
 		let migrationReapplied = false;
 		try {
-			await runLatestMigration('down');
+			await runMigrations('down', 2);
 			const reverted = await pool.query(
 				`SELECT 1
 				 FROM pgmigrations
@@ -374,7 +374,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 				 ) VALUES (1, DATE '2026-07-26', 1)`,
 			)).rejects.toMatchObject({ code: '23505' });
 
-			await runLatestMigration('up');
+			await runMigrations('up', 2);
 			migrationReapplied = true;
 			const reapplied = await pool.query(
 				`SELECT 1
@@ -391,14 +391,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 			)).resolves.toMatchObject({ rowCount: 1 });
 		} finally {
 			if (!migrationReapplied) {
-				const applied = await pool.query(
-					`SELECT 1
-					 FROM pgmigrations
-					 WHERE name = '026_align_health_tracking_contract'`,
-				);
-				if (applied.rows.length === 0) {
-					await runLatestMigration('up');
-				}
+				await runMigrations('up', 2);
 			}
 		}
 	});

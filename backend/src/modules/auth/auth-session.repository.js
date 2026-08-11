@@ -19,6 +19,59 @@ async function createSession({
 	return result.rows[0];
 }
 
+async function createLoginSession({
+	userId,
+	refreshTokenHash,
+	expiresAt,
+	appVersion,
+}) {
+	const client = await pool.connect();
+
+	try {
+		await client.query('BEGIN');
+
+		const userResult = await client.query(
+			`UPDATE users
+			 SET last_login_at = CURRENT_TIMESTAMP,
+			     app_version = COALESCE($2, app_version),
+			     updated_at = CURRENT_TIMESTAMP
+			 WHERE id = $1
+			 RETURNING
+				app_version AS "appVersion",
+				last_login_at AS "lastLoginAt"`,
+			[userId, appVersion ?? null],
+		);
+
+		if (userResult.rows.length === 0) {
+			await client.query('ROLLBACK');
+			return null;
+		}
+
+		const sessionResult = await client.query(
+			`INSERT INTO auth_sessions (
+				user_id,
+				refresh_token_hash,
+				expires_at
+			 )
+			 VALUES ($1, $2, $3)
+			 RETURNING id`,
+			[userId, refreshTokenHash, expiresAt],
+		);
+
+		await client.query('COMMIT');
+
+		return {
+			id: sessionResult.rows[0].id,
+			...userResult.rows[0],
+		};
+	} catch (error) {
+		await client.query('ROLLBACK');
+		throw error;
+	} finally {
+		client.release();
+	}
+}
+
 async function rotateSession({
 	refreshTokenHash,
 	nextRefreshTokenHash,
@@ -103,6 +156,7 @@ async function revokeAllSessions(userId) {
 
 module.exports = {
 	createSession,
+	createLoginSession,
 	rotateSession,
 	revokeSession,
 	revokeAllSessions,

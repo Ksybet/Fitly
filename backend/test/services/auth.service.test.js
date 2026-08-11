@@ -2,10 +2,10 @@ jest.mock('../../src/modules/user/user.repository', () => ({
 	findUserByEmail: jest.fn(),
 	findUserById: jest.fn(),
 	createUser: jest.fn(),
-	updateUserAppVersion: jest.fn(),
 }));
 jest.mock('../../src/modules/auth/auth-session.repository', () => ({
 	createSession: jest.fn(),
+	createLoginSession: jest.fn(),
 	rotateSession: jest.fn(),
 	revokeSession: jest.fn(),
 	revokeAllSessions: jest.fn(),
@@ -25,6 +25,7 @@ const bcrypt = require('bcryptjs');
 const userRepository = require('../../src/modules/user/user.repository');
 const {
 	createSession,
+	createLoginSession,
 	rotateSession,
 	revokeSession,
 	revokeAllSessions,
@@ -62,6 +63,11 @@ describe('auth service', () => {
 		token.hashRefreshToken.mockReturnValue('refresh-hash');
 		token.getAccessTokenExpiresIn.mockReturnValue(3600);
 		createSession.mockResolvedValue({ id: 1 });
+		createLoginSession.mockResolvedValue({
+			id: 2,
+			appVersion: null,
+			lastLoginAt: new Date('2026-08-12T12:00:00.000Z'),
+		});
 		rotateSession.mockResolvedValue({ id: 2, userId: 7 });
 		revokeSession.mockResolvedValue({ id: 2 });
 		revokeAllSessions.mockResolvedValue(2);
@@ -101,9 +107,12 @@ describe('auth service', () => {
 	});
 
 	test('returns the documented token pair and persists only the refresh-token hash', async () => {
-		const updatedUser = { ...activeUser, appVersion: '1.2.3' };
 		userRepository.findUserByEmail.mockResolvedValue(activeUser);
-		userRepository.updateUserAppVersion.mockResolvedValue(updatedUser);
+		createLoginSession.mockResolvedValue({
+			id: 2,
+			appVersion: '1.2.3',
+			lastLoginAt: new Date('2026-08-12T12:00:00.000Z'),
+		});
 		bcrypt.compare.mockResolvedValue(true);
 
 		await expect(loginUser({
@@ -132,25 +141,36 @@ describe('auth service', () => {
 			role: 'user',
 			appVersion: '1.2.3',
 		});
-		expect(createSession).toHaveBeenCalledWith({
+		expect(createLoginSession).toHaveBeenCalledWith({
 			userId: 7,
 			refreshTokenHash: 'refresh-hash',
 			expiresAt: expect.any(Date),
+			appVersion: '1.2.3',
 		});
-		expect(createSession.mock.calls[0][0]).not.toHaveProperty('refreshToken');
+		expect(createLoginSession.mock.calls[0][0])
+			.not.toHaveProperty('refreshToken');
+		expect(createSession).not.toHaveBeenCalled();
 	});
 
 	test('does not clear a stored app version when login omits the optional field', async () => {
 		const user = { ...activeUser, appVersion: '1.0.0' };
 		userRepository.findUserByEmail.mockResolvedValue(user);
 		bcrypt.compare.mockResolvedValue(true);
+		createLoginSession.mockResolvedValue({
+			id: 2,
+			appVersion: '1.0.0',
+			lastLoginAt: new Date('2026-08-12T12:00:00.000Z'),
+		});
 
 		const result = await loginUser({
 			login: user.email,
 			password: 'Strong#2026',
 		});
 
-		expect(userRepository.updateUserAppVersion).not.toHaveBeenCalled();
+		expect(createLoginSession).toHaveBeenCalledWith(expect.objectContaining({
+			userId: 7,
+			appVersion: undefined,
+		}));
 		expect(token.generateAccessToken).toHaveBeenCalledWith({
 			userId: 7,
 			email: user.email,
