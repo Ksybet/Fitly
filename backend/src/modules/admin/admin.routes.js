@@ -1,5 +1,6 @@
 const express = require('express');
 const adminCatalogController = require('./admin-catalog.controller');
+const adminFoodController = require('./admin-food.controller');
 const {
 	validateAdminCatalogQuery,
 	validateExerciseId,
@@ -9,6 +10,12 @@ const {
 	validateCreateWorkout,
 	validateUpdateWorkout,
 } = require('./admin-catalog.validators');
+const {
+	validateAdminFoodQuery,
+	validateAdminFoodProductId,
+	validateCreateFoodProduct,
+	validateUpdateFoodProduct,
+} = require('./admin-food.validators');
 
 const router = express.Router();
 
@@ -64,6 +71,33 @@ router.delete(
 	'/workouts/:workoutId',
 	validateWorkoutId,
 	adminCatalogController.deleteWorkout,
+);
+
+router.get(
+	'/food-products',
+	validateAdminFoodQuery,
+	adminFoodController.listFoodProducts,
+);
+router.post(
+	'/food-products',
+	validateCreateFoodProduct,
+	adminFoodController.createFoodProduct,
+);
+router.get(
+	'/food-products/:productId',
+	validateAdminFoodProductId,
+	adminFoodController.getFoodProduct,
+);
+router.patch(
+	'/food-products/:productId',
+	validateAdminFoodProductId,
+	validateUpdateFoodProduct,
+	adminFoodController.updateFoodProduct,
+);
+router.delete(
+	'/food-products/:productId',
+	validateAdminFoodProductId,
+	adminFoodController.deleteFoodProduct,
 );
 
 module.exports = router;
