@@ -11,6 +11,12 @@ jest.mock('../../src/config/db', () => {
 		testClient: client,
 	};
 });
+jest.mock('../../src/modules/logging/logger', () => ({
+	info: jest.fn(),
+	warning: jest.fn(),
+	error: jest.fn(),
+	critical: jest.fn(),
+}));
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
@@ -20,6 +26,7 @@ const app = require('../../src/app');
 const { pool, testClient } = require('../../src/config/db');
 const { ApiError } = require('../../src/utils/api-error');
 const { errorMiddleware } = require('../../src/middlewares/error.middleware');
+const logger = require('../../src/modules/logging/logger');
 
 const requestIdPattern = /^req_[0-9a-f]{32}$/;
 
@@ -61,6 +68,7 @@ describe('HTTP application contracts', () => {
 		testClient.query.mockReset();
 		testClient.release.mockReset();
 		pool.connect.mockResolvedValue(testClient);
+		logger.error.mockResolvedValue(undefined);
 	});
 
 	test('GET /health reports API and database availability', async () => {
@@ -515,16 +523,56 @@ describe('HTTP application contracts', () => {
 		});
 		errorApp.use(errorMiddleware);
 
-		await request(errorApp)
+		const response = await request(errorApp)
 			.get('/boom')
 			.expect(500)
 			.expect(response => expectErrorResponse(response, {
 				code: 'INTERNAL_ERROR',
 				message: 'Internal server error',
 			}));
+
+		expect(logger.error).toHaveBeenCalledWith('HTTP request failed', {
+			service: 'api.system',
+			userId: undefined,
+			requestId: response.body.error.requestId,
+			error: expect.any(Error),
+			method: 'GET',
+			path: '/boom',
+			status: 500,
+			code: 'INTERNAL_ERROR',
+		});
+	});
+
+	test('a server error log preserves authenticated user and request context', async () => {
+		const errorApp = express();
+		errorApp.use((req, res, next) => {
+			req.requestId = 'req_authenticated_context';
+			req.user = { userId: 42, role: 'user' };
+			next();
+		});
+		errorApp.get('/api/v1/workout-sessions/fail', () => {
+			throw new Error('database unavailable');
+		});
+		errorApp.use(errorMiddleware);
+
+		const response = await request(errorApp)
+			.get('/api/v1/workout-sessions/fail')
+			.expect(500);
+
+		expect(response.body.error.requestId).toBe('req_authenticated_context');
+		expect(logger.error).toHaveBeenCalledWith(
+			'HTTP request failed',
+			expect.objectContaining({
+				service: 'api.workout-sessions',
+				userId: 42,
+				requestId: 'req_authenticated_context',
+				status: 500,
+			}),
+		);
 	});
 
 	test('an API error exposes safe field details', async () => {
+		logger.error.mockClear();
 		const errorApp = express();
 		errorApp.get('/validation', (req, res, next) => {
 			next(new ApiError(400, 'Check the request', {
@@ -534,6 +582,7 @@ describe('HTTP application contracts', () => {
 					message: 'Email has an invalid format',
 				}],
 			}));
+		expect(logger.error).not.toHaveBeenCalled();
 		});
 		errorApp.use(errorMiddleware);
 

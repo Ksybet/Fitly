@@ -3,6 +3,7 @@ const { ApiError } = require('../../utils/api-error');
 const {
 	recordUserActivity,
 } = require('../user-activity/user-activity.service');
+const logger = require('../logging/logger');
 
 async function authMiddleware(req, res, next) {
 	const authHeader = req.headers.authorization;
@@ -34,8 +35,13 @@ async function authMiddleware(req, res, next) {
 
 	try {
 		await recordUserActivity(payload.userId);
-	} catch {
-		console.error('Failed to persist authenticated user activity');
+	} catch (error) {
+		void logger.warning('Failed to persist authenticated user activity', {
+			service: 'api.auth',
+			userId: payload.userId,
+			requestId: req.requestId,
+			error,
+		});
 	}
 
 	return next();

@@ -19,6 +19,7 @@ describe('environment configuration', () => {
 		expect(env.PORT).toBe(4567);
 		expect(env.HOST).toBe('0.0.0.0');
 		expect(env.TRUST_PROXY_HOPS).toBe(1);
+		expect(env.SYSTEM_LOG_RETENTION_DAYS).toBe(90);
 	});
 
 	test('rejects a missing JWT secret and invalid port', () => {
@@ -83,6 +84,20 @@ describe('environment configuration', () => {
 		jest.resetModules();
 		expect(() => require('../../src/config/env')).toThrow(
 			'NOTIFICATION_WORKER_BATCH_SIZE must be an integer between 1 and 100',
+		);
+	});
+
+	test('validates system log retention days', () => {
+		process.env.JWT_SECRET = 'secret';
+		process.env.DATABASE_URL = 'postgresql://localhost/fitly';
+		process.env.SYSTEM_LOG_RETENTION_DAYS = '30';
+		jest.resetModules();
+		expect(require('../../src/config/env').SYSTEM_LOG_RETENTION_DAYS).toBe(30);
+
+		process.env.SYSTEM_LOG_RETENTION_DAYS = '0';
+		jest.resetModules();
+		expect(() => require('../../src/config/env')).toThrow(
+			'SYSTEM_LOG_RETENTION_DAYS must be an integer between 1 and 3650',
 		);
 	});
 });

@@ -3883,6 +3883,11 @@ paths:
       tags: [Admin]
       operationId: listAdminLogs
       summary: Получить технические логи ошибок
+      description: |
+        Возвращает технические логи в UTC, отсортированные от новых к старым по
+        `timestamp DESC, id DESC`. Все переданные фильтры объединяются через AND;
+        границы `from` и `to` включительны. Текстовый поиск регистронезависимо
+        проверяет `message`, `stackTrace` и `requestId`. Только `role=admin`.
       x-requirements: [FITLY-063]
       parameters:
         - name: level
@@ -3891,6 +3896,7 @@ paths:
             $ref: '#/components/schemas/LogLevel'
         - name: service
           in: query
+          description: Точное имя источника лога.
           schema:
             type: string
             maxLength: 100
@@ -3901,16 +3907,19 @@ paths:
             format: int64
         - name: query
           in: query
+          description: Поиск по сообщению, stack trace и request ID.
           schema:
             type: string
             maxLength: 200
         - name: from
           in: query
+          description: Включительная нижняя UTC-граница диапазона.
           schema:
             type: string
             format: date-time
         - name: to
           in: query
+          description: Включительная верхняя UTC-граница диапазона.
           schema:
             type: string
             format: date-time
@@ -3931,6 +3940,10 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/LogEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
 

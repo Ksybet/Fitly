@@ -352,7 +352,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 
 		let migrationReapplied = false;
 		try {
-			await runMigrations('down', 3);
+			await runMigrations('down', 4);
 			const reverted = await pool.query(
 				`SELECT 1
 				 FROM pgmigrations
@@ -374,7 +374,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 				 ) VALUES (1, DATE '2026-07-26', 1)`,
 			)).rejects.toMatchObject({ code: '23505' });
 
-			await runMigrations('up', 3);
+			await runMigrations('up', 4);
 			migrationReapplied = true;
 			const reapplied = await pool.query(
 				`SELECT 1
@@ -391,7 +391,7 @@ describe('Daily tracking PostgreSQL contracts', () => {
 			)).resolves.toMatchObject({ rowCount: 1 });
 		} finally {
 			if (!migrationReapplied) {
-				await runMigrations('up', 3);
+				await runMigrations('up', 4);
 			}
 		}
 	});

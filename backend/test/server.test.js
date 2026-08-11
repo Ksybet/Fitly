@@ -2,6 +2,8 @@ const mockListen = jest.fn();
 const mockConnectDatabase = jest.fn();
 const mockCloseDatabase = jest.fn();
 const mockBootstrapAdministrator = jest.fn();
+const mockStartLogRetention = jest.fn();
+const mockStopLogRetention = jest.fn();
 
 jest.mock('../src/app', () => ({
 	listen: mockListen,
@@ -15,14 +17,17 @@ jest.mock('../src/config/db', () => ({
 jest.mock('../src/modules/admin/admin-bootstrap.service', () => ({
 	bootstrapAdministrator: mockBootstrapAdministrator,
 }));
+jest.mock('../src/modules/logging/log-retention.service', () => ({
+	startLogRetention: mockStartLogRetention,
+}));
 
 const env = require('../src/config/env');
 const { startServer } = require('../src/server');
+const logger = require('../src/modules/logging/logger');
 
 describe('server lifecycle', () => {
 	let server;
 	let signalHandlers;
-	let consoleLog;
 
 	beforeEach(() => {
 		jest.clearAllMocks();
@@ -34,13 +39,13 @@ describe('server lifecycle', () => {
 		mockConnectDatabase.mockResolvedValue(undefined);
 		mockCloseDatabase.mockResolvedValue(undefined);
 		mockBootstrapAdministrator.mockResolvedValue({ status: 'disabled' });
+		mockStartLogRetention.mockReturnValue(mockStopLogRetention);
 		mockListen.mockReturnValue(server);
 
 		jest.spyOn(process, 'once').mockImplementation((signal, handler) => {
 			signalHandlers[signal] = handler;
 			return process;
 		});
-		consoleLog = jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
@@ -61,14 +66,17 @@ describe('server lifecycle', () => {
 			.toBeLessThan(mockBootstrapAdministrator.mock.invocationCallOrder[0]);
 		expect(mockBootstrapAdministrator.mock.invocationCallOrder[0])
 			.toBeLessThan(mockListen.mock.invocationCallOrder[0]);
+		expect(mockStartLogRetention).toHaveBeenCalledTimes(1);
 		expect(process.once).toHaveBeenCalledWith('SIGINT', expect.any(Function));
 		expect(process.once).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
 
 		const readyCallback = mockListen.mock.calls[0][2];
 		readyCallback();
-		expect(consoleLog).toHaveBeenCalledWith(
-			`Fitly API is listening on ${env.HOST}:${env.PORT}`,
-		);
+		expect(logger.info).toHaveBeenCalledWith('Fitly API is listening', {
+			service: 'api.lifecycle',
+			host: env.HOST,
+			port: env.PORT,
+		});
 	});
 
 	test('does not open a port when the database connection fails', async () => {
@@ -96,9 +104,13 @@ describe('server lifecycle', () => {
 		await startServer();
 
 		expect(process.listenerCount(signal)).toBe(listenerCount);
-		signalHandlers[signal]();
+		await signalHandlers[signal]();
 
-		expect(consoleLog).toHaveBeenCalledWith(`${signal} received, shutting down`);
+		expect(mockStopLogRetention).toHaveBeenCalledTimes(1);
+		expect(logger.info).toHaveBeenCalledWith('Fitly API is shutting down', {
+			service: 'api.lifecycle',
+			signal,
+		});
 		expect(server.close).toHaveBeenCalledTimes(1);
 		expect(mockCloseDatabase).toHaveBeenCalledTimes(1);
 		expect(server.close.mock.invocationCallOrder[0])
