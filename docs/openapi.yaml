@@ -1783,7 +1783,7 @@ paths:
       tags: [Workouts]
       operationId: getWorkout
       summary: Получить тренировку с упражнениями и инструкциями
-      x-requirements: [FR-702, FITLY-008, FITLY-009]
+      x-requirements: [FR-702, FITLY-008, FITLY-009, FITLY-064]
       responses:
         '200':
           description: Тренировка
@@ -1833,7 +1833,7 @@ paths:
         Возвращает только сессии текущего пользователя. Параметры `from` и `to`
         фильтруют локальную дату `startedAt` включительно в часовом поясе
         пользователя.
-      x-requirements: [FR-703, FR-1001, FITLY-043, FITLY-044]
+      x-requirements: [FR-703, FR-1001, FITLY-043, FITLY-044, FITLY-064]
       parameters:
         - $ref: '#/components/parameters/FromDate'
         - $ref: '#/components/parameters/ToDate'
@@ -1867,7 +1867,7 @@ paths:
       operationId: startWorkoutSession
       summary: Начать тренировочную сессию
       description: У пользователя может быть только одна активная сессия.
-      x-requirements: [FR-703, FITLY-043]
+      x-requirements: [FR-703, FITLY-043, FITLY-064]
       x-error-codes:
         - ACTIVE_WORKOUT_SESSION_EXISTS
         - WORKOUT_PLAN_NOT_SCHEDULED
@@ -1906,6 +1906,7 @@ paths:
       tags: [Workouts]
       operationId: getActiveWorkoutSession
       summary: Получить активную или приостановленную сессию
+      x-requirements: [FR-703, FITLY-043, FITLY-064]
       responses:
         '200':
           description: Активная сессия или `null`
@@ -2021,7 +2022,7 @@ paths:
       tags: [Workouts]
       operationId: finishWorkoutSession
       summary: Завершить тренировку и сохранить результат
-      x-requirements: [FR-703, FITLY-043, FITLY-044]
+      x-requirements: [FR-703, FITLY-043, FITLY-044, FITLY-064]
       x-error-codes:
         - WORKOUT_SESSION_ALREADY_COMPLETED
         - WORKOUT_SESSION_CANCELLED
@@ -2507,7 +2508,7 @@ paths:
         `month` и с 1 января для `year`. Завершённые тренировки относятся к
         локальной дате `finishedAt` в часовом поясе пользователя. `points`
         содержит каждый день диапазона, включая дни с нулевыми значениями.
-      x-requirements: [FR-1001, FR-1004, FITLY-044, FITLY-048]
+      x-requirements: [FR-1001, FR-1004, FITLY-044, FITLY-048, FITLY-064]
       parameters:
         - $ref: '#/components/parameters/Period'
         - $ref: '#/components/parameters/PeriodEndDate'
