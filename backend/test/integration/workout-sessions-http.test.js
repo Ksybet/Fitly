@@ -5,6 +5,8 @@ const { pool, closeDatabase } = require('../../src/config/db');
 const clock =
 	require('../../src/modules/workout-sessions/workout-session-clock');
 
+const RESCHEDULED_AT = '2099-08-11T15:00:00Z';
+
 function expectTestDatabase(databaseName) {
 	if (!databaseName.endsWith('_test')) {
 		throw new Error(
@@ -118,7 +120,7 @@ describe('Workout sessions PostgreSQL HTTP contracts', () => {
 			.set('Authorization', firstToken)
 			.send({
 				workoutId: 3,
-				scheduledAt: '2026-08-11T15:00:00Z',
+				scheduledAt: RESCHEDULED_AT,
 			})
 			.expect(409)
 			.expect(response => {
@@ -259,7 +261,7 @@ describe('Workout sessions PostgreSQL HTTP contracts', () => {
 			.set('Authorization', token)
 			.send({
 				workoutId: 3,
-				scheduledAt: '2026-08-11T15:00:00Z',
+				scheduledAt: RESCHEDULED_AT,
 			})
 			.expect(200);
 		await request(app)
