@@ -8,4 +8,16 @@ function toDailyTrackingDto(daily) {
 	};
 }
 
-module.exports = { toDailyTrackingDto };
+function toStepEntryDto(entry) {
+	return {
+		date: entry.date instanceof Date
+			? entry.date.toISOString().slice(0, 10)
+			: entry.date,
+		steps: Number(entry.steps),
+		updatedAt: entry.updatedAt instanceof Date
+			? entry.updatedAt.toISOString()
+			: entry.updatedAt,
+	};
+}
+
+module.exports = { toDailyTrackingDto, toStepEntryDto };

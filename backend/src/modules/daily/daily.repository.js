@@ -6,6 +6,12 @@ const dailyColumns = `
 	calories::double precision AS calories
 `;
 
+const stepColumns = `
+	tracking_date::text AS date,
+	steps,
+	updated_at AS "updatedAt"
+`;
+
 async function getToday(userId, date) {
 	const result = await pool.query(
 		`SELECT
@@ -47,7 +53,54 @@ async function upsertToday(userId, date, data) {
 	return result.rows[0];
 }
 
+function addDateFilters(conditions, values, filters) {
+	if (filters.from) {
+		values.push(filters.from);
+		conditions.push(`tracking_date >= $${values.length}::date`);
+	}
+
+	if (filters.to) {
+		values.push(filters.to);
+		conditions.push(`tracking_date <= $${values.length}::date`);
+	}
+}
+
+async function listSteps(userId, filters) {
+	const conditions = ['user_id = $1'];
+	const values = [userId];
+	addDateFilters(conditions, values, filters);
+	const result = await pool.query(
+		`SELECT ${stepColumns}
+		 FROM daily_tracking
+		 WHERE ${conditions.join('\n\t\t AND ')}
+		 ORDER BY tracking_date ASC`,
+		values,
+	);
+
+	return result.rows;
+}
+
+async function upsertSteps(userId, date, steps) {
+	const result = await pool.query(
+		`INSERT INTO daily_tracking (
+			user_id,
+			tracking_date,
+			steps,
+			calories
+		 ) VALUES ($1, $2::date, $3, 0)
+		 ON CONFLICT (user_id, tracking_date) DO UPDATE
+		 SET steps = EXCLUDED.steps,
+		     updated_at = CURRENT_TIMESTAMP
+		 RETURNING ${stepColumns}`,
+		[userId, date, steps],
+	);
+
+	return result.rows[0];
+}
+
 module.exports = {
 	getToday,
 	upsertToday,
+	listSteps,
+	upsertSteps,
 };

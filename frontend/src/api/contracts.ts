@@ -117,11 +117,34 @@ export type WaterDay = {
 	progressPercent: number;
 };
 
+export type HealthDateRange = {
+	from?: string;
+	to?: string;
+};
+
+export type HealthHistoryFilters = HealthDateRange & {
+	page?: number;
+	pageSize?: number;
+};
+
+export type WeightEntryRequest = {
+	date: string;
+	weightKg: number;
+};
+
+export type WeightEntry = WeightEntryRequest & {
+	id: number;
+	createdAt: string;
+	updatedAt: string;
+};
+
 export type SleepTodayRequest = {
 	sleepStart: string;
 	sleepEnd: string;
 	sleepQuality: number;
 };
+
+export type SleepEntryRequest = SleepTodayRequest;
 
 export type SleepEntry = SleepTodayRequest & {
 	id: number;
@@ -129,6 +152,34 @@ export type SleepEntry = SleepTodayRequest & {
 	durationMinutes: number;
 	createdAt: string;
 	updatedAt: string;
+};
+
+export type WaterEntryRequest = {
+	amountMl: number;
+	consumedAt?: string;
+};
+
+export type WaterEntry = {
+	id: number;
+	amountMl: number;
+	consumedAt: string;
+	date: string;
+	createdAt: string;
+};
+
+export type AddWaterResult = {
+	entry: WaterEntry;
+	day: WaterDay;
+};
+
+export type StepEntry = {
+	date: string;
+	steps: number;
+	updatedAt: string;
+};
+
+export type DeletedResult = {
+	deleted: true;
 };
 
 export type MoodTodayRequest = {

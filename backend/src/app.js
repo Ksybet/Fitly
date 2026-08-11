@@ -26,6 +26,7 @@ const devicesRoutes = require('./modules/devices/devices.routes');
 const notificationsRoutes =
 	require('./modules/notifications/notifications.routes');
 const diaryRoutes = require('./modules/diary/diary.routes');
+const healthRoutes = require('./modules/health/health.routes');
 
 const {
 	authMiddleware,
@@ -72,6 +73,7 @@ app.use('/api/v1/achievements', achievementsRoutes);
 app.use('/api/v1/devices', devicesRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/diary', diaryRoutes);
+app.use('/api/v1/health', healthRoutes);
 app.use('/api/v1/admin', authMiddleware, requireRole('admin'));
 
 app.use((req, res, next) => {

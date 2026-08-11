@@ -179,6 +179,52 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 		expect(userResult.rows).toHaveLength(0);
 	});
 
+	test('uses weight_entries as the only profile weight source', async () => {
+		const registerResponse = await request(app)
+			.post('/api/v1/auth/register')
+			.send({
+				email: 'weight-source@example.com',
+				password: 'Fitly#2026',
+			})
+			.expect(201);
+		const authorization = `Bearer ${registerResponse.body.data.token}`;
+
+		await pool.query(
+			`INSERT INTO profiles (user_id, weight_kg)
+			 VALUES (1, 91)`,
+		);
+		await request(app)
+			.get('/api/v1/profile')
+			.set('Authorization', authorization)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.weightKg).toBeNull();
+			});
+
+		await request(app)
+			.put('/api/v1/profile')
+			.set('Authorization', authorization)
+			.send({ weightKg: 70 })
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.weightKg).toBe(70);
+			});
+		const stored = await pool.query(
+			`SELECT weight_kg::double precision AS "weightKg"
+			 FROM profiles WHERE user_id = 1`,
+		);
+		expect(stored.rows).toEqual([{ weightKg: 91 }]);
+
+		await pool.query('DELETE FROM weight_entries WHERE user_id = 1');
+		await request(app)
+			.get('/api/v1/profile')
+			.set('Authorization', authorization)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.weightKg).toBeNull();
+			});
+	});
+
 	test('enforces case-insensitive email uniqueness', async () => {
 		await request(app)
 			.post('/api/v1/auth/register')

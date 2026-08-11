@@ -1,6 +1,6 @@
 const dailyRepository = require('./daily.repository');
 const { ensureValidUserId } = require('../../utils/validation');
-const { toDailyTrackingDto } = require('./daily.mapper');
+const { toDailyTrackingDto, toStepEntryDto } = require('./daily.mapper');
 const {
 	getUserLocalDate,
 } = require('../settings/user-local-date.service');
@@ -27,7 +27,28 @@ async function updateToday(userId, data) {
 	return toDailyTrackingDto(daily);
 }
 
+async function listSteps(userId, filters) {
+	const entries = await dailyRepository.listSteps(
+		ensureValidUserId(userId),
+		filters,
+	);
+
+	return entries.map(toStepEntryDto);
+}
+
+async function updateSteps(userId, date, steps) {
+	const entry = await dailyRepository.upsertSteps(
+		ensureValidUserId(userId),
+		date,
+		steps,
+	);
+
+	return toStepEntryDto(entry);
+}
+
 module.exports = {
 	getToday,
 	updateToday,
+	listSteps,
+	updateSteps,
 };
