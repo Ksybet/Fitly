@@ -6,6 +6,7 @@ const { verifyAccessToken } = require('../../src/utils/token');
 const {
 	recordUserActivity,
 } = require('../../src/modules/user-activity/user-activity.service');
+const logger = require('../../src/modules/logging/logger');
 
 jest.mock('../../src/utils/token', () => ({
 	verifyAccessToken: jest.fn(),
@@ -45,7 +46,6 @@ describe('access token authentication middleware', () => {
 
 	test('continues the request when activity persistence fails', async () => {
 		const next = jest.fn();
-		const consoleError = jest.spyOn(console, 'error').mockImplementation();
 		verifyAccessToken.mockReturnValue({ userId: 7, role: 'user' });
 		recordUserActivity.mockRejectedValue(new Error('database unavailable'));
 
@@ -53,11 +53,15 @@ describe('access token authentication middleware', () => {
 			headers: { authorization: 'Bearer access-token' },
 		}, {}, next);
 
-		expect(consoleError).toHaveBeenCalledWith(
+		expect(logger.warning).toHaveBeenCalledWith(
 			'Failed to persist authenticated user activity',
+			expect.objectContaining({
+				service: 'api.auth',
+				userId: 7,
+				error: expect.any(Error),
+			}),
 		);
 		expect(next).toHaveBeenCalledWith();
-		consoleError.mockRestore();
 	});
 });
 

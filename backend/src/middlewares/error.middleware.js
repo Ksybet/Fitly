@@ -1,5 +1,11 @@
 const { ApiError, getDefaultErrorCode } = require('../utils/api-error');
 const { createRequestId } = require('./request-context.middleware');
+const logger = require('../modules/logging/logger');
+
+function inferApiService(req) {
+	const match = req.originalUrl?.match(/^\/api\/v1\/([^/?]+)/);
+	return match ? `api.${match[1]}` : 'api.system';
+}
 
 function errorMiddleware(err, req, res, next) {
 	if (res.headersSent) {
@@ -47,6 +53,19 @@ function errorMiddleware(err, req, res, next) {
 		error.details = details;
 	}
 
+	if (status >= 500) {
+		void logger.error('HTTP request failed', {
+			service: inferApiService(req),
+			userId: req.user?.userId,
+			requestId,
+			error: err,
+			method: req.method,
+			path: req.originalUrl?.split('?')[0] || req.path,
+			status,
+			code,
+		});
+	}
+
 	res.status(status).json({
 		success: false,
 		message,
@@ -54,4 +73,4 @@ function errorMiddleware(err, req, res, next) {
 	});
 }
 
-module.exports = { errorMiddleware };
+module.exports = { errorMiddleware, inferApiService };

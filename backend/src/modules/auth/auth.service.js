@@ -22,6 +22,7 @@ const { toUserDto } = require('./auth.mapper');
 const {
 	recordAdminLoginAttempt,
 } = require('../admin/admin-login-audit.service');
+const logger = require('../logging/logger');
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -33,8 +34,12 @@ async function recordRejectedAdminLogin(user, failureReason, requestMetadata) {
 			failureReason,
 			...requestMetadata,
 		});
-	} catch {
-		console.error('Failed to persist rejected administrator login audit');
+	} catch (error) {
+		void logger.warning('Failed to persist rejected administrator login audit', {
+			service: 'api.auth',
+			userId: user?.id,
+			error,
+		});
 	}
 }
 

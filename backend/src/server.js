@@ -4,6 +4,10 @@ const { connectDatabase, closeDatabase } = require('./config/db');
 const {
 	bootstrapAdministrator,
 } = require('./modules/admin/admin-bootstrap.service');
+const logger = require('./modules/logging/logger');
+const {
+	startLogRetention,
+} = require('./modules/logging/log-retention.service');
 
 async function startServer() {
 	await connectDatabase();
@@ -11,13 +15,22 @@ async function startServer() {
 		email: env.ADMIN_EMAIL,
 		password: env.ADMIN_PASSWORD,
 	});
+	const stopLogRetention = startLogRetention();
 
 	const server = app.listen(env.PORT, env.HOST, () => {
-		console.log(`Fitly API is listening on ${env.HOST}:${env.PORT}`);
+		void logger.info('Fitly API is listening', {
+			service: 'api.lifecycle',
+			host: env.HOST,
+			port: env.PORT,
+		});
 	});
 
 	async function shutdown(signal) {
-		console.log(`${signal} received, shutting down`);
+		stopLogRetention();
+		await logger.info('Fitly API is shutting down', {
+			service: 'api.lifecycle',
+			signal,
+		});
 		server.close(async () => {
 			await closeDatabase();
 		});
@@ -31,7 +44,10 @@ async function startServer() {
 
 if (require.main === module) {
 	startServer().catch(async error => {
-		console.error('Failed to start Fitly API:', error);
+		await logger.critical('Failed to start Fitly API', {
+			service: 'api.lifecycle',
+			error,
+		});
 		await closeDatabase().catch(() => {});
 		process.exitCode = 1;
 	});

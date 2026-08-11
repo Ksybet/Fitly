@@ -59,6 +59,13 @@ module.exports = {
 	ADMIN_EMAIL: process.env.ADMIN_EMAIL || undefined,
 	ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || undefined,
 	TRUST_PROXY_HOPS: normalizeTrustProxyHops(process.env.TRUST_PROXY_HOPS),
+	SYSTEM_LOG_RETENTION_DAYS: normalizeInteger(
+		process.env.SYSTEM_LOG_RETENTION_DAYS,
+		'SYSTEM_LOG_RETENTION_DAYS',
+		90,
+		1,
+		3650,
+	),
 	EXPO_ACCESS_TOKEN: process.env.EXPO_ACCESS_TOKEN || undefined,
 	NOTIFICATION_WORKER_POLL_MS: normalizeInteger(
 		process.env.NOTIFICATION_WORKER_POLL_MS,

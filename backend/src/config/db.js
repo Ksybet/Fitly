@@ -8,7 +8,11 @@ const pool = new Pool({
 });
 
 pool.on('error', error => {
-	console.error('Unexpected PostgreSQL pool error:', error);
+	const logger = require('../modules/logging/logger');
+	void logger.error('Unexpected PostgreSQL pool error', {
+		service: 'database',
+		error,
+	});
 });
 
 async function connectDatabase() {
