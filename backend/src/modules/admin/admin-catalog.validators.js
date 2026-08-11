@@ -33,6 +33,36 @@ const EXERCISE_REQUIRED_FIELDS = [
 	'intensity',
 	'instructions',
 ];
+const WORKOUT_FIELDS = new Set([
+	'title',
+	'description',
+	'type',
+	'bodyArea',
+	'intensity',
+	'durationMinutes',
+	'estimatedCalories',
+	'imageUrl',
+	'exercises',
+	'isActive',
+]);
+const WORKOUT_REQUIRED_FIELDS = [
+	'title',
+	'description',
+	'type',
+	'bodyArea',
+	'intensity',
+	'durationMinutes',
+	'estimatedCalories',
+	'exercises',
+];
+const WORKOUT_EXERCISE_FIELDS = new Set([
+	'exerciseId',
+	'order',
+	'sets',
+	'repetitions',
+	'durationSeconds',
+	'restSeconds',
+]);
 
 function isPlainObject(value) {
 	return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -126,6 +156,7 @@ function validateResourceId(paramName, targetName) {
 }
 
 const validateExerciseId = validateResourceId('exerciseId', 'exerciseId');
+const validateWorkoutId = validateResourceId('workoutId', 'workoutId');
 
 function validateString(value, field, minimum, maximum, details) {
 	if (typeof value !== 'string') {
@@ -255,9 +286,135 @@ function exerciseBodyValidator({ partial }) {
 const validateCreateExercise = exerciseBodyValidator({ partial: false });
 const validateUpdateExercise = exerciseBodyValidator({ partial: true });
 
+function validateInteger(value, field, minimum, maximum, details) {
+	if (!Number.isInteger(value)) {
+		addDetail(details, field, 'INVALID_TYPE', `${field} must be an integer`);
+	} else if (value < minimum || value > maximum) {
+		addDetail(details, field, 'OUT_OF_RANGE', `${field} is outside the allowed range`);
+	}
+}
+
+function validateNumber(value, field, minimum, maximum, details) {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		addDetail(details, field, 'INVALID_TYPE', `${field} must be a number`);
+	} else if (value < minimum || value > maximum) {
+		addDetail(details, field, 'OUT_OF_RANGE', `${field} is outside the allowed range`);
+	}
+}
+
+function validateWorkoutExercises(value, details) {
+	if (!Array.isArray(value)) {
+		addDetail(details, 'exercises', 'INVALID_TYPE', 'exercises must be an array');
+		return;
+	}
+	if (value.length < 1 || value.length > 100) {
+		addDetail(details, 'exercises', 'OUT_OF_RANGE', 'exercises must contain between 1 and 100 items');
+	}
+	const exerciseIds = new Set();
+	const orders = new Set();
+	value.forEach((exercise, index) => {
+		const field = `exercises[${index}]`;
+		const itemDetails = [];
+		if (!validateObjectBody(exercise, {
+			allowedFields: WORKOUT_EXERCISE_FIELDS,
+			requiredFields: ['exerciseId', 'order'],
+		}, itemDetails)) {
+			for (const detail of itemDetails) {
+				details.push({ ...detail, field });
+			}
+			return;
+		}
+		for (const detail of itemDetails) {
+			details.push({ ...detail, field: `${field}.${detail.field}` });
+		}
+		if (exercise.exerciseId !== undefined) {
+			validateInteger(exercise.exerciseId, `${field}.exerciseId`, 1, 2147483647, details);
+			if (exerciseIds.has(exercise.exerciseId)) {
+				addDetail(details, `${field}.exerciseId`, 'DUPLICATE', 'exerciseId must be unique within a workout');
+			}
+			exerciseIds.add(exercise.exerciseId);
+		}
+		if (exercise.order !== undefined) {
+			validateInteger(exercise.order, `${field}.order`, 1, 2147483647, details);
+			if (orders.has(exercise.order)) {
+				addDetail(details, `${field}.order`, 'DUPLICATE', 'order must be unique within a workout');
+			}
+			orders.add(exercise.order);
+		}
+		for (const [name, minimum, maximum] of [
+			['sets', 1, 100],
+			['repetitions', 1, 10000],
+			['durationSeconds', 1, 86400],
+			['restSeconds', 0, 3600],
+		]) {
+			if (exercise[name] !== undefined) {
+				validateInteger(exercise[name], `${field}.${name}`, minimum, maximum, details);
+			}
+		}
+	});
+}
+
+function validateWorkoutFields(body, details) {
+	if (body.title !== undefined) {
+		validateString(body.title, 'title', 1, 200, details);
+	}
+	if (body.description !== undefined) {
+		validateString(body.description, 'description', 1, 5000, details);
+	}
+	if (body.type !== undefined) {
+		validateEnum(body.type, 'type', WORKOUT_TYPES, details);
+	}
+	if (body.bodyArea !== undefined) {
+		validateEnum(body.bodyArea, 'bodyArea', BODY_AREAS, details);
+	}
+	if (body.intensity !== undefined) {
+		validateEnum(body.intensity, 'intensity', INTENSITIES, details);
+	}
+	if (body.durationMinutes !== undefined) {
+		validateInteger(body.durationMinutes, 'durationMinutes', 5, 240, details);
+	}
+	if (body.estimatedCalories !== undefined) {
+		validateNumber(body.estimatedCalories, 'estimatedCalories', 0, 5000, details);
+	}
+	if (body.imageUrl !== undefined && body.imageUrl !== null && !isUri(body.imageUrl)) {
+		addDetail(details, 'imageUrl', 'INVALID_FORMAT', 'imageUrl must be a URI or null');
+	}
+	if (body.exercises !== undefined) {
+		validateWorkoutExercises(body.exercises, details);
+	}
+	if (body.isActive !== undefined && typeof body.isActive !== 'boolean') {
+		addDetail(details, 'isActive', 'INVALID_TYPE', 'isActive must be a boolean');
+	}
+}
+
+function workoutBodyValidator({ partial }) {
+	return (req, res, next) => {
+		const details = [];
+		const validBody = validateObjectBody(req.body, {
+			allowedFields: WORKOUT_FIELDS,
+			requiredFields: partial ? [] : WORKOUT_REQUIRED_FIELDS,
+			minProperties: partial ? 1 : 0,
+		}, details);
+		if (validBody) {
+			validateWorkoutFields(req.body, details);
+		}
+		if (details.length > 0) {
+			return next(new ApiError(400, 'Request validation failed', { details }));
+		}
+		req.adminCatalogBody = req.body;
+		return next();
+	};
+}
+
+const validateCreateWorkout = workoutBodyValidator({ partial: false });
+const validateUpdateWorkout = workoutBodyValidator({ partial: true });
+
 module.exports = {
 	validateAdminCatalogQuery,
 	validateExerciseId,
 	validateCreateExercise,
 	validateUpdateExercise,
+	validateWorkoutId,
+	validateCreateWorkout,
+	validateUpdateWorkout,
 };

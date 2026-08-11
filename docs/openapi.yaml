@@ -3494,6 +3494,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Workout'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
@@ -3544,6 +3546,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/Workout'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -3557,7 +3561,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WorkoutRequest'
+              $ref: '#/components/schemas/WorkoutUpdateRequest'
       responses:
         '200':
           description: Программа обновлена
@@ -3584,6 +3588,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -5597,6 +5603,46 @@ components:
         isActive:
           type: boolean
           default: true
+    WorkoutUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        bodyArea:
+          $ref: '#/components/schemas/BodyArea'
+        intensity:
+          $ref: '#/components/schemas/Intensity'
+        durationMinutes:
+          type: integer
+          minimum: 5
+          maximum: 240
+        estimatedCalories:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 5000
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+        exercises:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WorkoutExerciseRequest'
+        isActive:
+          type: boolean
     Workout:
       allOf:
         - $ref: '#/components/schemas/WorkoutSummary'

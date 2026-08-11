@@ -53,10 +53,67 @@ async function deleteExercise(req, res, next) {
 	}
 }
 
+async function listWorkouts(req, res, next) {
+	try {
+		const result = await adminCatalogService.listWorkouts(
+			req.adminCatalogQuery,
+		);
+		return sendSuccess(res, result.items, { meta: result.meta });
+	} catch (error) {
+		return next(error);
+	}
+}
+
+async function getWorkout(req, res, next) {
+	try {
+		const workout = await adminCatalogService.getWorkout(req.workoutId);
+		return sendSuccess(res, workout);
+	} catch (error) {
+		return next(error);
+	}
+}
+
+async function createWorkout(req, res, next) {
+	try {
+		const workout = await adminCatalogService.createWorkout(
+			req.adminCatalogBody,
+		);
+		return sendSuccess(res, workout, { status: 201 });
+	} catch (error) {
+		return next(error);
+	}
+}
+
+async function updateWorkout(req, res, next) {
+	try {
+		const workout = await adminCatalogService.updateWorkout(
+			req.workoutId,
+			req.adminCatalogBody,
+		);
+		return sendSuccess(res, workout);
+	} catch (error) {
+		return next(error);
+	}
+}
+
+async function deleteWorkout(req, res, next) {
+	try {
+		await adminCatalogService.deleteWorkout(req.workoutId);
+		return sendDeleted(res);
+	} catch (error) {
+		return next(error);
+	}
+}
+
 module.exports = {
 	listExercises,
 	getExercise,
 	createExercise,
 	updateExercise,
 	deleteExercise,
+	listWorkouts,
+	getWorkout,
+	createWorkout,
+	updateWorkout,
+	deleteWorkout,
 };
