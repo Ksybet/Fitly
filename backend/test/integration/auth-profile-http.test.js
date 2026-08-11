@@ -4,6 +4,7 @@ const { pool, closeDatabase } = require('../../src/config/db');
 
 const requestIdPattern = /^req_[0-9a-f]{32}$/;
 const tables = [
+	'user_activity_daily',
 	'auth_sessions',
 	'weight_entries',
 	'admin_login_attempts',
@@ -79,6 +80,13 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 		expect(sessionResult.rows[0].refreshTokenHash).toMatch(/^[0-9a-f]{64}$/);
 		expect(sessionResult.rows[0].refreshTokenHash)
 			.not.toBe(registerResponse.body.data.refreshToken);
+		const registeredUser = await pool.query(
+			`SELECT last_login_at AS "lastLoginAt"
+			 FROM users
+			 WHERE id = $1`,
+			[1],
+		);
+		expect(registeredUser.rows[0].lastLoginAt).toBeNull();
 
 		const loginResponse = await request(app)
 			.post('/api/v1/auth/login')
@@ -89,6 +97,13 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 			})
 			.expect(200);
 		const authorization = `Bearer ${loginResponse.body.data.token}`;
+		const loggedInUser = await pool.query(
+			`SELECT last_login_at AS "lastLoginAt"
+			 FROM users
+			 WHERE id = $1`,
+			[1],
+		);
+		expect(loggedInUser.rows[0].lastLoginAt).toBeInstanceOf(Date);
 
 		await request(app)
 			.get('/api/v1/auth/me')
@@ -122,6 +137,20 @@ describe('Auth, profile, and account PostgreSQL contracts', () => {
 					updatedAt: expect.any(String),
 				});
 			});
+
+		const activityResult = await pool.query(
+			`SELECT
+				activity_date::text AS "activityDate",
+				last_activity_at AS "lastActivityAt"
+			 FROM user_activity_daily
+			 WHERE user_id = $1`,
+			[1],
+		);
+		expect(activityResult.rows).toHaveLength(1);
+		expect(activityResult.rows[0]).toEqual({
+			activityDate: new Date().toISOString().slice(0, 10),
+			lastActivityAt: expect.any(Date),
+		});
 
 		await request(app)
 			.put('/api/v1/profile')

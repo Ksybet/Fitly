@@ -12,6 +12,7 @@ const appTables = [
 	'notification_schedules',
 	'notifications',
 	'push_devices',
+	'user_activity_daily',
 	'user_settings',
 	'weight_entries',
 	'workout_exercises',
@@ -80,7 +81,40 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(24);
+		expect(cascadeResult.rows[0].count).toBe(25);
+
+		const statisticsSchema = await pool.query(
+			`SELECT
+				(SELECT is_nullable
+				 FROM information_schema.columns
+				 WHERE table_schema = 'public'
+				   AND table_name = 'users'
+				   AND column_name = 'last_login_at') AS "lastLoginNullable",
+				(SELECT COUNT(*)::integer
+				 FROM pg_indexes
+				 WHERE schemaname = 'public'
+				   AND indexname IN (
+					'user_activity_daily_date_user_idx',
+					'users_role_created_at_idx'
+				   )) AS indexes,
+				(SELECT STRING_AGG(
+					key_usage.column_name,
+					',' ORDER BY key_usage.ordinal_position
+				 )
+				 FROM information_schema.table_constraints constraint_info
+				 INNER JOIN information_schema.key_column_usage key_usage
+					ON key_usage.constraint_schema = constraint_info.constraint_schema
+					AND key_usage.constraint_name = constraint_info.constraint_name
+				 WHERE constraint_info.table_schema = 'public'
+				   AND constraint_info.table_name = 'user_activity_daily'
+				   AND constraint_info.constraint_type = 'PRIMARY KEY')
+					AS "primaryKeyColumns"`,
+		);
+		expect(statisticsSchema.rows[0]).toEqual({
+			lastLoginNullable: 'YES',
+			indexes: 2,
+			primaryKeyColumns: 'user_id,activity_date',
+		});
 	});
 
 	test('seeds squat achievements and protects awarded records', async () => {
