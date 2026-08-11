@@ -27,6 +27,7 @@ const notificationsRoutes =
 	require('./modules/notifications/notifications.routes');
 const diaryRoutes = require('./modules/diary/diary.routes');
 const healthRoutes = require('./modules/health/health.routes');
+const supportRoutes = require('./modules/support/support.routes');
 const adminRoutes = require('./modules/admin/admin.routes');
 
 const {
@@ -75,6 +76,7 @@ app.use('/api/v1/devices', devicesRoutes);
 app.use('/api/v1/notifications', notificationsRoutes);
 app.use('/api/v1/diary', diaryRoutes);
 app.use('/api/v1/health', healthRoutes);
+app.use('/api/v1/support', supportRoutes);
 app.use(
 	'/api/v1/admin',
 	authMiddleware,

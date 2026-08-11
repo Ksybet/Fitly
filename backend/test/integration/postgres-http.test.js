@@ -23,6 +23,8 @@ const appTables = [
 	'diary_entries',
 	'mood_entries',
 	'sleep_entries',
+	'support_messages',
+	'support_requests',
 	'water_entries',
 	'workout_session_exercise_results',
 	'workout_sessions',
@@ -81,7 +83,7 @@ describe('PostgreSQL schema and administrator audit', () => {
 			 WHERE constraint_schema = 'public'
 			   AND delete_rule = 'CASCADE'`,
 		);
-		expect(cascadeResult.rows[0].count).toBe(25);
+		expect(cascadeResult.rows[0].count).toBe(27);
 
 		const statisticsSchema = await pool.query(
 			`SELECT
