@@ -1,10 +1,20 @@
+const { execFile } = require('child_process');
 const path = require('path');
+const { promisify } = require('util');
 const jwt = require('jsonwebtoken');
-const { Client } = require('pg');
-const { runner } = require('node-pg-migrate');
 const request = require('supertest');
 const app = require('../../src/app');
 const { pool, closeDatabase } = require('../../src/config/db');
+
+const execFileAsync = promisify(execFile);
+const backendRoot = path.resolve(__dirname, '../..');
+const migrationCli = path.join(
+	backendRoot,
+	'node_modules',
+	'node-pg-migrate',
+	'bin',
+	'node-pg-migrate.js',
+);
 
 const tables = [
 	'auth_sessions',
@@ -36,23 +46,20 @@ function authorization(userId) {
 }
 
 async function runLatestMigration(direction) {
-	const client = new Client({
-		connectionString: process.env.TEST_DATABASE_URL,
-	});
-	await client.connect();
-
-	try {
-		return await runner({
-			dbClient: client,
-			dir: path.resolve(__dirname, '../../migrations'),
+	await execFileAsync(
+		process.execPath,
+		[
+			migrationCli,
 			direction,
-			count: 1,
-			migrationsTable: 'pgmigrations',
-			log: () => {},
-		});
-	} finally {
-		await client.end();
-	}
+			'1',
+			'--database-url-var',
+			'TEST_DATABASE_URL',
+		],
+		{
+			cwd: backendRoot,
+			env: process.env,
+		},
+	);
 }
 
 describe('Daily tracking PostgreSQL contracts', () => {
@@ -345,9 +352,13 @@ describe('Daily tracking PostgreSQL contracts', () => {
 
 		let migrationReapplied = false;
 		try {
-			const reverted = await runLatestMigration('down');
-			expect(reverted).toHaveLength(1);
-			expect(reverted[0].name).toBe('026_align_health_tracking_contract');
+			await runLatestMigration('down');
+			const reverted = await pool.query(
+				`SELECT 1
+				 FROM pgmigrations
+				 WHERE name = '026_align_health_tracking_contract'`,
+			);
+			expect(reverted.rows).toHaveLength(0);
 
 			const aggregate = await pool.query(
 				`SELECT amount_ml AS "amountMl"
@@ -363,10 +374,14 @@ describe('Daily tracking PostgreSQL contracts', () => {
 				 ) VALUES (1, DATE '2026-07-26', 1)`,
 			)).rejects.toMatchObject({ code: '23505' });
 
-			const reapplied = await runLatestMigration('up');
+			await runLatestMigration('up');
 			migrationReapplied = true;
-			expect(reapplied).toHaveLength(1);
-			expect(reapplied[0].name).toBe('026_align_health_tracking_contract');
+			const reapplied = await pool.query(
+				`SELECT 1
+				 FROM pgmigrations
+				 WHERE name = '026_align_health_tracking_contract'`,
+			);
+			expect(reapplied.rows).toHaveLength(1);
 			await expect(pool.query(
 				`INSERT INTO water_entries (
 					user_id,
