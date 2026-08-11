@@ -3,9 +3,12 @@ const { authMiddleware } = require('../auth/auth.middleware');
 const weightController = require('../weight/weight.controller');
 const sleepController = require('../sleep/sleep.controller');
 const waterController = require('../water/water.controller');
+const dailyController = require('../daily/daily.controller');
 const {
 	validateHistoryListQuery,
+	validateDateRange,
 	validateEntryId,
+	validateDatePath,
 } = require('./health.validators');
 const {
 	validateWeightEntryRequest,
@@ -16,6 +19,9 @@ const {
 const {
 	validateWaterEntryRequest,
 } = require('../water/water.validators');
+const {
+	validateStepsRequest,
+} = require('../daily/daily.validators');
 
 const router = express.Router();
 
@@ -90,6 +96,18 @@ router.delete(
 	'/water/:entryId',
 	validateEntryId,
 	waterController.deleteEntry,
+);
+
+router.get(
+	'/steps',
+	validateDateRange,
+	dailyController.listSteps,
+);
+router.put(
+	'/steps/:date',
+	validateDatePath,
+	validateStepsRequest,
+	dailyController.updateSteps,
 );
 
 module.exports = router;

@@ -143,9 +143,25 @@ function validateEntryId(req, res, next) {
 	return next();
 }
 
+function validateDatePath(req, res, next) {
+	if (!isValidDate(req.params.date)) {
+		return next(new ApiError(400, 'Request validation failed', {
+			details: [{
+				field: 'date',
+				code: 'INVALID_DATE',
+				message: 'date must be a valid date in YYYY-MM-DD format',
+			}],
+		}));
+	}
+
+	req.healthDate = req.params.date;
+	return next();
+}
+
 module.exports = {
 	isValidDate,
 	validateHistoryListQuery,
 	validateDateRange,
 	validateEntryId,
+	validateDatePath,
 };

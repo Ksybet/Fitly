@@ -1302,7 +1302,7 @@ paths:
         - $ref: '#/components/parameters/ToDate'
       responses:
         '200':
-          description: Шаги по дням
+          description: Шаги по дням в хронологическом порядке
           content:
             application/json:
               schema:
@@ -1315,6 +1315,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/StepEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
 
   /api/v1/health/steps/{date}:
     parameters:
