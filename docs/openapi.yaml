@@ -3358,6 +3358,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
@@ -3409,6 +3411,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/Exercise'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -3422,7 +3426,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ExerciseRequest'
+              $ref: '#/components/schemas/ExerciseUpdateRequest'
       responses:
         '200':
           description: Упражнение обновлено
@@ -3450,6 +3454,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -5463,6 +5469,40 @@ components:
         isActive:
           type: boolean
           default: true
+    ExerciseUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        type:
+          $ref: '#/components/schemas/WorkoutType'
+        bodyArea:
+          $ref: '#/components/schemas/BodyArea'
+        intensity:
+          $ref: '#/components/schemas/Intensity'
+        instructions:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        media:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/MediaResource'
+        isActive:
+          type: boolean
     Exercise:
       allOf:
         - $ref: '#/components/schemas/ExerciseRequest'
