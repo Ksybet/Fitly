@@ -3628,6 +3628,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
@@ -3678,6 +3680,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/FoodProduct'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -3691,7 +3695,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/FoodProductRequest'
+              $ref: '#/components/schemas/FoodProductUpdateRequest'
       responses:
         '200':
           description: Продукт обновлён
@@ -3718,6 +3722,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -5247,6 +5253,19 @@ components:
         isActive:
           type: boolean
           default: true
+    FoodProductUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        nutritionPer100g:
+          $ref: '#/components/schemas/NutritionValues'
+        isActive:
+          type: boolean
     FoodProduct:
       allOf:
         - $ref: '#/components/schemas/FoodProductRequest'
