@@ -1,6 +1,7 @@
 const express = require('express');
 const adminCatalogController = require('./admin-catalog.controller');
 const adminFoodController = require('./admin-food.controller');
+const adminUsersController = require('./admin-users.controller');
 const {
 	validateAdminCatalogQuery,
 	validateExerciseId,
@@ -16,8 +17,17 @@ const {
 	validateCreateFoodProduct,
 	validateUpdateFoodProduct,
 } = require('./admin-food.validators');
+const {
+	validateAdminUsersQuery,
+} = require('./admin-users.validators');
 
 const router = express.Router();
+
+router.get(
+	'/users',
+	validateAdminUsersQuery,
+	adminUsersController.listUsers,
+);
 
 router.get(
 	'/exercises',

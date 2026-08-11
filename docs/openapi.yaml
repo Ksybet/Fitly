@@ -3240,7 +3240,7 @@ paths:
         - name: status
           in: query
           schema:
-            $ref: '#/components/schemas/UserStatus'
+            $ref: '#/components/schemas/AdminUserStatus'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -3258,6 +3258,10 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/AdminUser'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
 
@@ -4458,6 +4462,9 @@ components:
     UserStatus:
       type: string
       enum: [active, blocked, deleted]
+    AdminUserStatus:
+      type: string
+      enum: [active, blocked]
     User:
       type: object
       required: [id, email, role, status, emailVerified, createdAt]
@@ -6659,7 +6666,7 @@ components:
             $ref: '#/components/schemas/NamedMetric'
     AdminUser:
       type: object
-      required: [id, email, role, status, emailVerified, subscriptionStatus, createdAt, lastLoginAt]
+      required: [id, email, firstName, role, status, emailVerified, createdAt, lastLoginAt]
       properties:
         id:
           type: integer
@@ -6673,11 +6680,9 @@ components:
         role:
           $ref: '#/components/schemas/UserRole'
         status:
-          $ref: '#/components/schemas/UserStatus'
+          $ref: '#/components/schemas/AdminUserStatus'
         emailVerified:
           type: boolean
-        subscriptionStatus:
-          $ref: '#/components/schemas/SubscriptionStatus'
         createdAt:
           type: string
           format: date-time
