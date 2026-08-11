@@ -1,4 +1,7 @@
+const path = require('path');
 const jwt = require('jsonwebtoken');
+const { Client } = require('pg');
+const { runner } = require('node-pg-migrate');
 const request = require('supertest');
 const app = require('../../src/app');
 const { pool, closeDatabase } = require('../../src/config/db');
@@ -30,6 +33,26 @@ function authorization(userId) {
 		process.env.JWT_SECRET,
 	);
 	return `Bearer ${token}`;
+}
+
+async function runLatestMigration(direction) {
+	const client = new Client({
+		connectionString: process.env.TEST_DATABASE_URL,
+	});
+	await client.connect();
+
+	try {
+		return await runner({
+			dbClient: client,
+			dir: path.resolve(__dirname, '../../migrations'),
+			direction,
+			count: 1,
+			migrationsTable: 'pgmigrations',
+			log: () => {},
+		});
+	} finally {
+		await client.end();
+	}
 }
 
 describe('Daily tracking PostgreSQL contracts', () => {
@@ -307,6 +330,62 @@ describe('Daily tracking PostgreSQL contracts', () => {
 			'SELECT id FROM water_entries WHERE user_id = 1',
 		);
 		expect(cleared.rows).toHaveLength(0);
+	});
+
+	test('reverses and reapplies the Health storage migration', async () => {
+		await pool.query(
+			`INSERT INTO water_entries (
+				user_id,
+				water_date,
+				amount_ml
+			 ) VALUES
+				(1, DATE '2026-07-26', 12000),
+				(1, DATE '2026-07-26', 10000)`,
+		);
+
+		let migrationReapplied = false;
+		try {
+			const reverted = await runLatestMigration('down');
+			expect(reverted).toHaveLength(1);
+			expect(reverted[0].name).toBe('026_align_health_tracking_contract');
+
+			const aggregate = await pool.query(
+				`SELECT amount_ml AS "amountMl"
+				 FROM water_entries
+				 WHERE user_id = 1 AND water_date = DATE '2026-07-26'`,
+			);
+			expect(aggregate.rows).toEqual([{ amountMl: 20000 }]);
+			await expect(pool.query(
+				`INSERT INTO water_entries (
+					user_id,
+					water_date,
+					amount_ml
+				 ) VALUES (1, DATE '2026-07-26', 1)`,
+			)).rejects.toMatchObject({ code: '23505' });
+
+			const reapplied = await runLatestMigration('up');
+			migrationReapplied = true;
+			expect(reapplied).toHaveLength(1);
+			expect(reapplied[0].name).toBe('026_align_health_tracking_contract');
+			await expect(pool.query(
+				`INSERT INTO water_entries (
+					user_id,
+					water_date,
+					amount_ml
+				 ) VALUES (1, DATE '2026-07-26', 1)`,
+			)).resolves.toMatchObject({ rowCount: 1 });
+		} finally {
+			if (!migrationReapplied) {
+				const applied = await pool.query(
+					`SELECT 1
+					 FROM pgmigrations
+					 WHERE name = '026_align_health_tracking_contract'`,
+				);
+				if (applied.rows.length === 0) {
+					await runLatestMigration('up');
+				}
+			}
+		}
 	});
 
 	test('uses the user local date independently from the PostgreSQL timezone', async () => {
