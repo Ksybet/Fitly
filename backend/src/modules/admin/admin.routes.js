@@ -3,6 +3,7 @@ const adminCatalogController = require('./admin-catalog.controller');
 const adminFoodController = require('./admin-food.controller');
 const adminUsersController = require('./admin-users.controller');
 const adminAnalyticsController = require('./admin-analytics.controller');
+const adminSupportController = require('./admin-support.controller');
 const {
 	validateAdminCatalogQuery,
 	validateExerciseId,
@@ -24,8 +25,37 @@ const {
 const {
 	validateAdminAnalyticsQuery,
 } = require('./admin-analytics.validators');
+const {
+	validateListQuery: validateAdminSupportQuery,
+	validateRequestId: validateAdminSupportRequestId,
+	validateStatus: validateAdminSupportStatus,
+	validateMessage: validateAdminSupportMessage,
+} = require('./admin-support.validators');
 
 const router = express.Router();
+
+router.get(
+	'/support-requests',
+	validateAdminSupportQuery,
+	adminSupportController.listRequests,
+);
+router.get(
+	'/support-requests/:requestId',
+	validateAdminSupportRequestId,
+	adminSupportController.getRequest,
+);
+router.patch(
+	'/support-requests/:requestId',
+	validateAdminSupportRequestId,
+	validateAdminSupportStatus,
+	adminSupportController.updateStatus,
+);
+router.post(
+	'/support-requests/:requestId/messages',
+	validateAdminSupportRequestId,
+	validateAdminSupportMessage,
+	adminSupportController.addMessage,
+);
 
 router.get(
 	'/analytics/overview',
