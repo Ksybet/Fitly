@@ -8,10 +8,7 @@ const profileQuery = `
 		p.birth_date AS "birthDate",
 		p.gender,
 		p.height_cm::double precision AS "heightCm",
-		COALESCE(
-			latest_weight.weight_kg,
-			p.weight_kg
-		)::double precision AS "weightKg",
+		latest_weight.weight_kg::double precision AS "weightKg",
 		COALESCE(p.updated_at, u.updated_at) AS "updatedAt"
 	FROM users u
 	LEFT JOIN profiles p ON p.user_id = u.id
@@ -42,16 +39,14 @@ async function saveProfile(userId, profile, { recordWeight, weightDate }) {
 				first_name,
 				birth_date,
 				gender,
-				height_cm,
-				weight_kg
+				height_cm
 			 )
-			 VALUES ($1, $2, $3, $4, $5, $6)
+			 VALUES ($1, $2, $3, $4, $5)
 			 ON CONFLICT (user_id) DO UPDATE
 			 SET first_name = EXCLUDED.first_name,
 			     birth_date = EXCLUDED.birth_date,
 			     gender = EXCLUDED.gender,
 			     height_cm = EXCLUDED.height_cm,
-			     weight_kg = EXCLUDED.weight_kg,
 			     updated_at = CURRENT_TIMESTAMP`,
 			[
 				userId,
@@ -59,7 +54,6 @@ async function saveProfile(userId, profile, { recordWeight, weightDate }) {
 				profile.birthDate,
 				profile.gender,
 				profile.heightCm,
-				profile.weightKg,
 			],
 		);
 

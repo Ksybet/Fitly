@@ -1,4 +1,5 @@
 const { pool } = require('../../config/db');
+const { withTransaction } = require('../../utils/db-transaction');
 
 const waterDayQuery = `
 	SELECT
@@ -18,31 +19,45 @@ const waterDayQuery = `
 			2000
 		)::integer AS "goalMl"
 	FROM (SELECT 1) singleton
-	LEFT JOIN water_entries entry
-		ON entry.user_id = $1
-	   AND entry.water_date = $2::date
+	LEFT JOIN (
+		SELECT
+			user_id,
+			water_date,
+			SUM(amount_ml)::integer AS amount_ml
+		FROM water_entries
+		WHERE user_id = $1
+		  AND water_date = $2::date
+		GROUP BY user_id, water_date
+	) entry ON TRUE
 `;
 
-async function getTodayWater(userId, date) {
-	const result = await pool.query(waterDayQuery, [userId, date]);
+async function getTodayWater(userId, date, executor = pool) {
+	const result = await executor.query(waterDayQuery, [userId, date]);
 	return result.rows[0];
 }
 
 async function setTodayWater(userId, date, amountMl) {
-	await pool.query(
-		`INSERT INTO water_entries (
-			user_id,
-			water_date,
-			amount_ml
-		 )
-		 VALUES ($1, $2::date, $3)
-		 ON CONFLICT (user_id, water_date) DO UPDATE
-		 SET amount_ml = EXCLUDED.amount_ml,
-		     recorded_at = CURRENT_TIMESTAMP`,
-		[userId, date, amountMl],
-	);
+	return withTransaction(async client => {
+		await client.query(
+			`DELETE FROM water_entries
+			 WHERE user_id = $1
+			   AND water_date = $2::date`,
+			[userId, date],
+		);
 
-	return getTodayWater(userId, date);
+		if (amountMl > 0) {
+			await client.query(
+				`INSERT INTO water_entries (
+					user_id,
+					water_date,
+					amount_ml
+				 ) VALUES ($1, $2::date, $3)`,
+				[userId, date, amountMl],
+			);
+		}
+
+		return getTodayWater(userId, date, client);
+	});
 }
 
 module.exports = {
