@@ -991,6 +991,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/WeightEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Health]
       operationId: createWeightEntry
@@ -1040,6 +1042,8 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/WeightEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
     patch:
@@ -1069,6 +1073,8 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     delete:
       tags: [Health]
       operationId: deleteWeightEntry
@@ -1076,6 +1082,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
 
