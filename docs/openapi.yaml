@@ -3875,6 +3875,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/v1/admin/logs:
     get:
@@ -6361,6 +6363,10 @@ components:
     SupportStatus:
       type: string
       enum: [created, in_review, resolved, closed]
+      description: |
+        Состояние обращения. Разрешённые административные переходы:
+        `created -> in_review|closed`, `in_review -> resolved|closed`,
+        `resolved -> in_review|closed`. Состояние `closed` терминальное.
     CreateSupportRequest:
       type: object
       additionalProperties: false
