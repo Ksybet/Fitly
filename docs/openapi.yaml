@@ -1100,7 +1100,7 @@ paths:
         - $ref: '#/components/parameters/PageSize'
       responses:
         '200':
-          description: История сна
+          description: История сна в порядке убывания даты
           content:
             application/json:
               schema:
@@ -1113,6 +1113,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/SleepEntry'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     post:
       tags: [Health]
       operationId: createSleepEntry
@@ -1139,6 +1141,8 @@ paths:
                         $ref: '#/components/schemas/SleepEntry'
         '400':
           $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /api/v1/health/sleep/{entryId}:
     parameters:
@@ -1170,6 +1174,8 @@ paths:
           $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     delete:
       tags: [Health]
       operationId: deleteSleepEntry
@@ -1177,6 +1183,8 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Deleted'
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '404':
           $ref: '#/components/responses/NotFound'
 
