@@ -4,6 +4,7 @@ const adminFoodController = require('./admin-food.controller');
 const adminUsersController = require('./admin-users.controller');
 const adminAnalyticsController = require('./admin-analytics.controller');
 const adminSupportController = require('./admin-support.controller');
+const adminLogsController = require('./admin-logs.controller');
 const {
 	validateAdminCatalogQuery,
 	validateExerciseId,
@@ -31,8 +32,17 @@ const {
 	validateStatus: validateAdminSupportStatus,
 	validateMessage: validateAdminSupportMessage,
 } = require('./admin-support.validators');
+const {
+	validateAdminLogsQuery,
+} = require('./admin-logs.validators');
 
 const router = express.Router();
+
+router.get(
+	'/logs',
+	validateAdminLogsQuery,
+	adminLogsController.listLogs,
+);
 
 router.get(
 	'/support-requests',
