@@ -226,6 +226,87 @@ describe('Daily tracking PostgreSQL contracts', () => {
 			 )
 			 VALUES (1, DATE '2026-07-26', 200001, 0)`,
 		)).rejects.toMatchObject({ code: '23514' });
+
+		await pool.query(
+			`INSERT INTO water_entries (
+				user_id,
+				water_date,
+				amount_ml
+			 ) VALUES
+				(1, DATE '2026-07-26', 250),
+				(1, DATE '2026-07-26', 500)`,
+		);
+		await expect(pool.query(
+			`INSERT INTO water_entries (
+				user_id,
+				water_date,
+				amount_ml
+			 ) VALUES (1, DATE '2026-07-27', 0)`,
+		)).rejects.toMatchObject({ code: '23514' });
+
+		const indexResult = await pool.query(
+			`SELECT indexname
+			 FROM pg_indexes
+			 WHERE schemaname = 'public'
+			   AND indexname = 'water_entries_user_date_idx'`,
+		);
+		expect(indexResult.rows).toEqual([{
+			indexname: 'water_entries_user_date_idx',
+		}]);
+	});
+
+	test('aggregates water events and replaces or clears the local day', async () => {
+		const firstPut = await request(app)
+			.put('/api/v1/water/today')
+			.set('Authorization', auth)
+			.send({ amountMl: 500 })
+			.expect(200);
+		const date = firstPut.body.data.date;
+
+		await pool.query(
+			`INSERT INTO water_entries (
+				user_id,
+				water_date,
+				amount_ml
+			 ) VALUES
+				(1, $1::date, 250),
+				(1, $1::date, 125)`,
+			[date],
+		);
+
+		await request(app)
+			.get('/api/v1/water/today')
+			.set('Authorization', auth)
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.amountMl).toBe(875);
+			});
+
+		await request(app)
+			.put('/api/v1/water/today')
+			.set('Authorization', auth)
+			.send({ amountMl: 300 })
+			.expect(200);
+		const replaced = await pool.query(
+			`SELECT amount_ml AS "amountMl"
+			 FROM water_entries
+			 WHERE user_id = 1 AND water_date = $1::date`,
+			[date],
+		);
+		expect(replaced.rows).toEqual([{ amountMl: 300 }]);
+
+		await request(app)
+			.put('/api/v1/water/today')
+			.set('Authorization', auth)
+			.send({ amountMl: 0 })
+			.expect(200)
+			.expect(response => {
+				expect(response.body.data.amountMl).toBe(0);
+			});
+		const cleared = await pool.query(
+			'SELECT id FROM water_entries WHERE user_id = 1',
+		);
+		expect(cleared.rows).toHaveLength(0);
 	});
 
 	test('uses the user local date independently from the PostgreSQL timezone', async () => {
