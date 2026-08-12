@@ -1,5 +1,9 @@
 require('dotenv').config();
 
+const DEFAULT_POSTBOX_REGION = 'ru-central1';
+const DEFAULT_POSTBOX_ENDPOINT = 'https://postbox.cloud.yandex.net';
+const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function normalizePort(value) {
 	if (value === undefined || value === '') {
 		return 3000;
@@ -37,6 +41,57 @@ function normalizeInteger(value, name, defaultValue, minimum, maximum) {
 		throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
 	}
 	return number;
+}
+
+function normalizePostboxEndpoint(value) {
+	const endpoint = value?.trim() || DEFAULT_POSTBOX_ENDPOINT;
+	let parsed;
+	try {
+		parsed = new URL(endpoint);
+	} catch {
+		throw new Error('POSTBOX_ENDPOINT must be a valid HTTPS URL');
+	}
+
+	if (
+		parsed.protocol !== 'https:'
+		|| parsed.username
+		|| parsed.password
+		|| parsed.search
+		|| parsed.hash
+	) {
+		throw new Error('POSTBOX_ENDPOINT must be a valid HTTPS URL');
+	}
+
+	return endpoint.replace(/\/+$/, '');
+}
+
+function getPostboxConfig() {
+	const accessKeyId = process.env.POSTBOX_ACCESS_KEY_ID?.trim();
+	const secretAccessKey = process.env.POSTBOX_SECRET_ACCESS_KEY;
+	const fromEmail = process.env.POSTBOX_FROM_EMAIL?.trim();
+	const missing = [];
+
+	if (!accessKeyId) missing.push('POSTBOX_ACCESS_KEY_ID');
+	if (!secretAccessKey?.trim()) missing.push('POSTBOX_SECRET_ACCESS_KEY');
+	if (!fromEmail) missing.push('POSTBOX_FROM_EMAIL');
+
+	if (missing.length > 0) {
+		throw new Error(
+			`${missing.join(', ')} environment variable${missing.length === 1 ? ' is' : 's are'} required to create the Postbox email adapter`,
+		);
+	}
+
+	if (fromEmail.length > 254 || !EMAIL_ADDRESS_PATTERN.test(fromEmail)) {
+		throw new Error('POSTBOX_FROM_EMAIL must be a valid email address');
+	}
+
+	return {
+		accessKeyId,
+		secretAccessKey,
+		region: process.env.POSTBOX_REGION?.trim() || DEFAULT_POSTBOX_REGION,
+		endpoint: normalizePostboxEndpoint(process.env.POSTBOX_ENDPOINT),
+		fromEmail,
+	};
 }
 
 if (!process.env.JWT_SECRET || !process.env.JWT_SECRET.trim()) {
@@ -88,4 +143,5 @@ module.exports = {
 		10,
 		600,
 	),
+	getPostboxConfig,
 };

@@ -213,6 +213,19 @@ docker compose --env-file .env -f compose.yaml -f compose.test.yaml down --volum
 
 Тестовая БД существует только внутри test-стека и удаляется второй командой. Тесты дополнительно отказываются работать с базой, имя которой не заканчивается на `_test`.
 
+### Проверка Yandex Cloud Postbox
+
+Для отправки email используется Amazon-compatible API Yandex Cloud Postbox. Перед проверкой подтвердите домен отправителя, выдайте сервисному аккаунту роль `postbox.sender` и укажите в `backend/.env` его static access key (`POSTBOX_ACCESS_KEY_ID` и `POSTBOX_SECRET_ACCESS_KEY`) вместе с подтверждённым `POSTBOX_FROM_EMAIL`. Реальные ключи не добавляются в Git.
+
+Однократная ручная проверка отправляет фиксированное тестовое письмо и выводит только факт принятия письма провайдером и `messageId`:
+
+```bash
+cd backend
+npm run email:smoke -- recipient@example.com
+```
+
+`accepted: true` означает, что Postbox принял письмо на обработку. Эта команда не подтверждает доставку в почтовый ящик получателя и не выполняет автоматические повторы.
+
 ### Production
 
 На сервере создайте собственный `.env` с production-секретами и запустите:

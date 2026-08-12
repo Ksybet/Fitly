@@ -44,6 +44,11 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
       SYSTEM_LOG_RETENTION_DAYS: ${SYSTEM_LOG_RETENTION_DAYS:-90}
+      POSTBOX_ACCESS_KEY_ID: ${POSTBOX_ACCESS_KEY_ID:-}
+      POSTBOX_SECRET_ACCESS_KEY: ${POSTBOX_SECRET_ACCESS_KEY:-}
+      POSTBOX_REGION: ${POSTBOX_REGION:-ru-central1}
+      POSTBOX_ENDPOINT: ${POSTBOX_ENDPOINT:-https://postbox.cloud.yandex.net}
+      POSTBOX_FROM_EMAIL: ${POSTBOX_FROM_EMAIL:-}
     depends_on:
       migrate:
         condition: service_completed_successfully
