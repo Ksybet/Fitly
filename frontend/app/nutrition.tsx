@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import {
+	createCustomFoodProduct,
 	createMeal,
 	getNutritionDay,
 	searchFoodProducts,
@@ -100,6 +101,13 @@ export default function NutritionScreen() {
 	const [products, setProducts] = useState<FoodProduct[]>([]);
 	const [isLoadingProducts, setIsLoadingProducts] = useState(false);
 	const [isSavingMeal, setIsSavingMeal] = useState(false);
+	const [showCreateProduct, setShowCreateProduct] = useState(false);
+	const [newProductName, setNewProductName] = useState('');
+	const [newProductCalories, setNewProductCalories] = useState('');
+	const [newProductProtein, setNewProductProtein] = useState('');
+	const [newProductFat, setNewProductFat] = useState('');
+	const [newProductCarbs, setNewProductCarbs] = useState('');
+	const [isCreatingProduct, setIsCreatingProduct] = useState(false);
 
 	const [selectedProducts, setSelectedProducts] = useState<
 		SelectedFoodProduct[]
@@ -253,6 +261,57 @@ async function loadProducts(query: string) {
 			console.error('❌ CREATE MEAL ERROR:', error);
 		} finally {
 			setIsSavingMeal(false);
+		}
+	}
+
+	async function handleCreateProduct() {
+		const name = newProductName.trim();
+		const calories = Number(newProductCalories);
+		const protein = Number(newProductProtein);
+		const fat = Number(newProductFat);
+		const carbs = Number(newProductCarbs);
+
+		if (
+			!name ||
+			!Number.isFinite(calories) ||
+			!Number.isFinite(protein) ||
+			!Number.isFinite(fat) ||
+			!Number.isFinite(carbs) ||
+			calories < 0 ||
+			protein < 0 ||
+			fat < 0 ||
+			carbs < 0
+		) {
+			return;
+		}
+
+		try {
+			setIsCreatingProduct(true);
+
+			const product = await createCustomFoodProduct({
+				name,
+				nutritionPer100g: {
+					calories,
+					proteinG: protein,
+					fatG: fat,
+					carbsG: carbs,
+				},
+			});
+
+			setProducts(prev => [product, ...prev]);
+			addProduct(product);
+
+			setShowCreateProduct(false);
+
+			setNewProductName('');
+			setNewProductCalories('');
+			setNewProductProtein('');
+			setNewProductFat('');
+			setNewProductCarbs('');
+		} catch (error) {
+			console.error('❌ CREATE PRODUCT ERROR:', error);
+		} finally {
+			setIsCreatingProduct(false);
 		}
 	}
 
@@ -733,6 +792,143 @@ async function loadProducts(query: string) {
 												</Pressable>
 											</View>
 										))}
+									</View>
+								)}
+
+								<Pressable
+									onPress={() => setShowCreateProduct(prev => !prev)}
+									style={[
+										styles.createProductButton,
+										{
+											backgroundColor: colors.cardSecondary,
+											borderColor: colors.border,
+										},
+									]}
+								>
+									<Ionicons
+										name='add-circle-outline'
+										size={22}
+										color={colors.primary}
+									/>
+
+									<Text
+										style={[
+											styles.createProductButtonText,
+											{ color: colors.primary },
+										]}
+									>
+										Добавить свой продукт
+									</Text>
+								</Pressable>
+
+								{showCreateProduct && (
+									<View
+										style={[
+											styles.createProductForm,
+											{
+												backgroundColor: colors.cardSecondary,
+												borderColor: colors.border,
+											},
+										]}
+									>
+										<Text
+											style={[
+												styles.createProductTitle,
+												{ color: colors.text },
+											]}
+										>
+											Новый продукт
+										</Text>
+
+										<TextInput
+											style={[
+												styles.createProductInput,
+												{
+													color: colors.text,
+													borderColor: colors.border,
+												},
+											]}
+											value={newProductName}
+											onChangeText={setNewProductName}
+											placeholder='Название продукта'
+											placeholderTextColor={colors.textMuted}
+										/>
+
+										<TextInput
+											style={[
+												styles.createProductInput,
+												{
+													color: colors.text,
+													borderColor: colors.border,
+												},
+											]}
+											value={newProductCalories}
+											onChangeText={setNewProductCalories}
+											placeholder='Калории на 100 г'
+											placeholderTextColor={colors.textMuted}
+											keyboardType='decimal-pad'
+										/>
+
+										<TextInput
+											style={[
+												styles.createProductInput,
+												{
+													color: colors.text,
+													borderColor: colors.border,
+												},
+											]}
+											value={newProductProtein}
+											onChangeText={setNewProductProtein}
+											placeholder='Белки на 100 г'
+											placeholderTextColor={colors.textMuted}
+											keyboardType='decimal-pad'
+										/>
+
+										<TextInput
+											style={[
+												styles.createProductInput,
+												{
+													color: colors.text,
+													borderColor: colors.border,
+												},
+											]}
+											value={newProductFat}
+											onChangeText={setNewProductFat}
+											placeholder='Жиры на 100 г'
+											placeholderTextColor={colors.textMuted}
+											keyboardType='decimal-pad'
+										/>
+
+										<TextInput
+											style={[
+												styles.createProductInput,
+												{
+													color: colors.text,
+													borderColor: colors.border,
+												},
+											]}
+											value={newProductCarbs}
+											onChangeText={setNewProductCarbs}
+											placeholder='Углеводы на 100 г'
+											placeholderTextColor={colors.textMuted}
+											keyboardType='decimal-pad'
+										/>
+
+										<Pressable
+											onPress={handleCreateProduct}
+											disabled={isCreatingProduct}
+											style={[
+												styles.createProductSaveButton,
+												{
+													backgroundColor: colors.primary,
+													opacity: isCreatingProduct ? 0.5 : 1,
+												},
+											]}
+										>
+											<Text style={styles.nextButtonText}>
+												{isCreatingProduct ? 'Добавление...' : 'Добавить'}
+											</Text>
+										</Pressable>
 									</View>
 								)}
 
@@ -1280,5 +1476,51 @@ const styles = StyleSheet.create({
 		color: '#fff',
 		fontSize: 15,
 		fontWeight: '800',
+	},
+
+	createProductButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderWidth: 1,
+		borderRadius: 12,
+		paddingVertical: 11,
+		marginBottom: 12,
+		gap: 8,
+	},
+
+	createProductButtonText: {
+		fontSize: 14,
+		fontWeight: '700',
+	},
+
+	createProductForm: {
+		borderWidth: 1,
+		borderRadius: 14,
+		padding: 12,
+		marginBottom: 12,
+	},
+
+	createProductTitle: {
+		fontSize: 15,
+		fontWeight: '700',
+		marginBottom: 10,
+	},
+
+	createProductInput: {
+		height: 44,
+		borderWidth: 1,
+		borderRadius: 10,
+		paddingHorizontal: 12,
+		marginBottom: 8,
+		fontSize: 14,
+	},
+
+	createProductSaveButton: {
+		height: 44,
+		borderRadius: 10,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginTop: 4,
 	},
 });
