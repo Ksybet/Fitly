@@ -2,18 +2,33 @@ import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import {
 	ActivityIndicator,
+	Modal,
 	Pressable,
 	ScrollView,
 	StyleSheet,
 	Text,
+	TextInput,
 	View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
-import { getNutritionDay } from '@/src/api/nutrition.api';
-import type { MealEntry, MealType, NutritionDay } from '@/src/api/contracts';
+import {
+	createMeal,
+	getNutritionDay,
+	searchFoodProducts,
+} from '@/src/api/nutrition.api';
+import type {
+	FoodProduct,
+	MealEntry,
+	MealType,
+	NutritionDay,
+} from '@/src/api/contracts';
 import { ThemeContext } from '@/src/context/ThemeContext';
+type SelectedFoodProduct = {
+	product: FoodProduct;
+	amountG: string;
+};
 
 const MEAL_TYPE_LABELS: Record<MealType, string> = {
 	breakfast: 'Завтрак',
@@ -21,6 +36,25 @@ const MEAL_TYPE_LABELS: Record<MealType, string> = {
 	dinner: 'Ужин',
 	snack: 'Перекус',
 };
+
+const MEAL_TYPES: { value: MealType; label: string }[] = [
+	{
+		value: 'breakfast',
+		label: 'Завтрак',
+	},
+	{
+		value: 'lunch',
+		label: 'Обед',
+	},
+	{
+		value: 'dinner',
+		label: 'Ужин',
+	},
+	{
+		value: 'snack',
+		label: 'Перекус',
+	},
+];
 
 function getDateString(date: Date) {
 	const year = date.getFullYear();
@@ -40,6 +74,14 @@ function formatNumber(value: number) {
 	return Math.round(value * 100) / 100;
 }
 
+function getCurrentTime() {
+	const now = new Date();
+
+	return `${String(now.getHours()).padStart(2, '0')}:${String(
+		now.getMinutes(),
+	).padStart(2, '0')}`;
+}
+
 export default function NutritionScreen() {
 	const { colors } = React.useContext(ThemeContext);
 
@@ -47,6 +89,21 @@ export default function NutritionScreen() {
 	const [nutritionDay, setNutritionDay] = useState<NutritionDay | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+
+	const [addMealModalVisible, setAddMealModalVisible] = useState(false);
+	const [selectedMealType, setSelectedMealType] =
+		useState<MealType>('breakfast');
+	const [mealTime, setMealTime] = useState(getCurrentTime());
+	const [addMealStep, setAddMealStep] = useState<1 | 2>(1);
+
+	const [productSearch, setProductSearch] = useState('');
+	const [products, setProducts] = useState<FoodProduct[]>([]);
+	const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+	const [isSavingMeal, setIsSavingMeal] = useState(false);
+
+	const [selectedProducts, setSelectedProducts] = useState<
+		SelectedFoodProduct[]
+	>([]);	
 
 	useEffect(() => {
 		let cancelled = false;
@@ -84,6 +141,119 @@ export default function NutritionScreen() {
 		const date = new Date(`${selectedDate}T12:00:00`);
 		date.setDate(date.getDate() + days);
 		setSelectedDate(getDateString(date));
+	}
+
+function openAddMealModal() {
+	setAddMealStep(1);
+	setSelectedMealType('breakfast');
+	setMealTime(getCurrentTime());
+
+	setProductSearch('');
+	setProducts([]);
+	setSelectedProducts([]);
+
+	setAddMealModalVisible(true);
+}
+
+	function closeAddMealModal() {
+		setAddMealModalVisible(false);
+	}
+
+async function loadProducts(query: string) {
+	try {
+		setIsLoadingProducts(true);
+
+		const result = await searchFoodProducts({
+			query: query.trim() || undefined,
+			page: 1,
+			pageSize: 20,
+		});
+
+		console.log('🍎 PRODUCTS RESULT:', result);
+
+		setProducts(result.items);
+	} catch (error) {
+		console.error('❌ PRODUCTS ERROR:', error);
+		setProducts([]);
+	} finally {
+		setIsLoadingProducts(false);
+	}
+}
+
+	async function handleNextStep() {
+		setAddMealStep(2);
+		await loadProducts('');
+	}
+
+	function addProduct(product: FoodProduct) {
+		setSelectedProducts(prev => {
+			if (prev.some(item => item.product.id === product.id)) {
+				return prev;
+			}
+
+			return [
+				...prev,
+				{
+					product,
+					amountG: '',
+				},
+			];
+		});
+	}
+
+	function removeProduct(productId: number) {
+		setSelectedProducts(prev =>
+			prev.filter(item => item.product.id !== productId),
+		);
+	}
+
+	function updateProductAmount(productId: number, amountG: string) {
+		const normalized = amountG.replace(/[^0-9.]/g, '');
+
+		setSelectedProducts(prev =>
+			prev.map(item =>
+				item.product.id === productId
+					? {
+							...item,
+							amountG: normalized,
+						}
+					: item,
+			),
+		);
+	}
+
+	async function handleSaveMeal() {
+		const validProducts = selectedProducts.filter(
+			item => Number(item.amountG) > 0,
+		);
+
+		if (validProducts.length === 0) {
+			return;
+		}
+
+		try {
+			setIsSavingMeal(true);
+
+			const eatenAt = new Date(`${selectedDate}T${mealTime}:00`).toISOString();
+
+			await createMeal({
+				mealType: selectedMealType,
+				eatenAt,
+				items: validProducts.map(item => ({
+					productId: item.product.id,
+					amountG: Number(item.amountG),
+				})),
+			});
+
+			const updatedNutritionDay = await getNutritionDay(selectedDate);
+
+			setNutritionDay(updatedNutritionDay);
+			closeAddMealModal();
+		} catch (error) {
+			console.error('❌ CREATE MEAL ERROR:', error);
+		} finally {
+			setIsSavingMeal(false);
+		}
 	}
 
 	function renderMeal(meal: MealEntry) {
@@ -194,7 +364,12 @@ export default function NutritionScreen() {
 				) : nutritionDay ? (
 					<>
 						<View
-							style={[styles.summaryCard, { backgroundColor: colors.card }]}
+							style={[
+								styles.summaryCard,
+								{
+									backgroundColor: colors.card,
+								},
+							]}
 						>
 							<Text style={[styles.summaryTitle, { color: colors.text }]}>
 								Итого за день
@@ -207,7 +382,12 @@ export default function NutritionScreen() {
 							<View style={styles.summaryMacros}>
 								<View style={styles.summaryMacro}>
 									<Text
-										style={[styles.summaryMacroValue, { color: colors.text }]}
+										style={[
+											styles.summaryMacroValue,
+											{
+												color: colors.text,
+											},
+										]}
 									>
 										{formatNumber(nutritionDay.totals.proteinG)} г
 									</Text>
@@ -226,7 +406,12 @@ export default function NutritionScreen() {
 
 								<View style={styles.summaryMacro}>
 									<Text
-										style={[styles.summaryMacroValue, { color: colors.text }]}
+										style={[
+											styles.summaryMacroValue,
+											{
+												color: colors.text,
+											},
+										]}
 									>
 										{formatNumber(nutritionDay.totals.fatG)} г
 									</Text>
@@ -245,7 +430,12 @@ export default function NutritionScreen() {
 
 								<View style={styles.summaryMacro}>
 									<Text
-										style={[styles.summaryMacroValue, { color: colors.text }]}
+										style={[
+											styles.summaryMacroValue,
+											{
+												color: colors.text,
+											},
+										]}
 									>
 										{formatNumber(nutritionDay.totals.carbsG)} г
 									</Text>
@@ -270,7 +460,12 @@ export default function NutritionScreen() {
 
 						{nutritionDay.meals.length === 0 ? (
 							<View
-								style={[styles.emptyCard, { backgroundColor: colors.card }]}
+								style={[
+									styles.emptyCard,
+									{
+										backgroundColor: colors.card,
+									},
+								]}
 							>
 								<Text
 									style={[
@@ -294,9 +489,7 @@ export default function NutritionScreen() {
 									backgroundColor: colors.primary,
 								},
 							]}
-							onPress={() => {
-								// Добавление приёма пищи реализуем следующим шагом.
-							}}
+							onPress={openAddMealModal}
 						>
 							<MaterialIcons name='add' size={24} color='#fff' />
 
@@ -305,6 +498,371 @@ export default function NutritionScreen() {
 					</>
 				) : null}
 			</ScrollView>
+
+			<Modal
+				visible={addMealModalVisible}
+				transparent
+				animationType='fade'
+				onRequestClose={closeAddMealModal}
+			>
+				<View style={styles.modalOverlay}>
+					<View
+						style={[
+							styles.modalCard,
+							{
+								backgroundColor: colors.card,
+								shadowColor: colors.shadow,
+							},
+						]}
+					>
+						{addMealStep === 1 ? (
+							<>
+								<Text style={[styles.modalTitle, { color: colors.text }]}>
+									Добавить приём пищи
+								</Text>
+
+								<Text
+									style={[styles.modalSubtitle, { color: colors.textMuted }]}
+								>
+									Выберите тип приёма пищи
+								</Text>
+
+								<View style={styles.mealTypeList}>
+									{MEAL_TYPES.map(item => (
+										<Pressable
+											key={item.value}
+											onPress={() => setSelectedMealType(item.value)}
+											style={[
+												styles.mealTypeButton,
+												{
+													backgroundColor:
+														selectedMealType === item.value
+															? colors.primary
+															: colors.cardSecondary,
+												},
+											]}
+										>
+											<Text
+												style={[
+													styles.mealTypeText,
+													{
+														color:
+															selectedMealType === item.value
+																? '#FFFFFF'
+																: colors.text,
+													},
+												]}
+											>
+												{item.label}
+											</Text>
+										</Pressable>
+									))}
+								</View>
+
+								<Text
+									style={[styles.modalSubtitle, { color: colors.textMuted }]}
+								>
+									Время: {mealTime}
+								</Text>
+
+								<View style={styles.modalButtons}>
+									<Pressable
+										style={[
+											styles.modalButton,
+											styles.cancelButton,
+											{
+												backgroundColor: colors.cardSecondary,
+											},
+										]}
+										onPress={closeAddMealModal}
+									>
+										<Text
+											style={[
+												styles.cancelButtonText,
+												{ color: colors.textSecondary },
+											]}
+										>
+											Отмена
+										</Text>
+									</Pressable>
+									<Pressable
+										style={[
+											styles.modalButton,
+											{
+												backgroundColor: colors.primary,
+											},
+										]}
+										onPress={handleNextStep}
+									>
+										<Text style={styles.nextButtonText}>Далее</Text>
+									</Pressable>
+								</View>
+							</>
+						) : (
+							<>
+								<View style={styles.modalHeaderRow}>
+									<Pressable onPress={() => setAddMealStep(1)} hitSlop={10}>
+										<Ionicons
+											name='arrow-back'
+											size={24}
+											color={colors.primary}
+										/>
+									</Pressable>
+
+									<Text
+										style={[
+											styles.modalTitle,
+											{
+												color: colors.text,
+												marginBottom: 0,
+											},
+										]}
+									>
+										Выбор продуктов
+									</Text>
+
+									<View style={{ width: 24 }} />
+								</View>
+
+								<Text
+									style={[styles.modalSubtitle, { color: colors.textMuted }]}
+								>
+									Найдите продукт и укажите его количество
+								</Text>
+
+								<View
+									style={[
+										styles.productSearchWrap,
+										{
+											backgroundColor: colors.cardSecondary,
+											borderColor: colors.border,
+										},
+									]}
+								>
+									<Ionicons
+										name='search-outline'
+										size={20}
+										color={colors.textMuted}
+									/>
+
+									<TextInput
+										style={[styles.productSearchInput, { color: colors.text }]}
+										value={productSearch}
+										onChangeText={text => {
+											setProductSearch(text);
+											loadProducts(text);
+										}}
+										placeholder='Поиск продукта'
+										placeholderTextColor={colors.textMuted}
+									/>
+								</View>
+
+								{selectedProducts.length > 0 && (
+									<View style={styles.selectedProducts}>
+										<Text
+											style={[
+												styles.selectedProductsTitle,
+												{ color: colors.text },
+											]}
+										>
+											Выбранные продукты
+										</Text>
+
+										{selectedProducts.map(item => (
+											<View
+												key={item.product.id}
+												style={[
+													styles.selectedProductRow,
+													{
+														backgroundColor: colors.cardSecondary,
+													},
+												]}
+											>
+												<View style={styles.selectedProductInfo}>
+													<Text
+														style={[
+															styles.selectedProductName,
+															{ color: colors.text },
+														]}
+													>
+														{item.product.name}
+													</Text>
+
+													<Text
+														style={[
+															styles.selectedProductNutrition,
+															{ color: colors.textMuted },
+														]}
+													>
+														{item.product.nutritionPer100g.calories} ккал / 100
+														г
+													</Text>
+												</View>
+
+												<View style={styles.gramsInputWrap}>
+													<TextInput
+														style={[styles.gramsInput, { color: colors.text }]}
+														value={item.amountG}
+														onChangeText={value =>
+															updateProductAmount(item.product.id, value)
+														}
+														keyboardType='decimal-pad'
+														placeholder='г'
+														placeholderTextColor={colors.textMuted}
+													/>
+
+													<Text
+														style={[
+															styles.gramsLabel,
+															{ color: colors.textMuted },
+														]}
+													>
+														г
+													</Text>
+												</View>
+
+												<Pressable
+													onPress={() => removeProduct(item.product.id)}
+													hitSlop={8}
+												>
+													<Ionicons
+														name='close-circle-outline'
+														size={22}
+														color={colors.textMuted}
+													/>
+												</Pressable>
+											</View>
+										))}
+									</View>
+								)}
+
+								<Text style={[styles.productListTitle, { color: colors.text }]}>
+									Каталог
+								</Text>
+
+								<View style={styles.productList}>
+									{isLoadingProducts ? (
+										<ActivityIndicator size='small' color={colors.primary} />
+									) : products.length === 0 ? (
+										<Text
+											style={[
+												styles.emptyProductsText,
+												{ color: colors.textMuted },
+											]}
+										>
+											Продукты не найдены
+										</Text>
+									) : (
+										<ScrollView
+											style={styles.productsScroll}
+											keyboardShouldPersistTaps='handled'
+											showsVerticalScrollIndicator={false}
+										>
+											{products.map(product => {
+												const isSelected = selectedProducts.some(
+													item => item.product.id === product.id,
+												);
+
+												return (
+													<Pressable
+														key={product.id}
+														onPress={() => addProduct(product)}
+														disabled={isSelected}
+														style={[
+															styles.productItem,
+															{
+																backgroundColor: colors.cardSecondary,
+																opacity: isSelected ? 0.5 : 1,
+															},
+														]}
+													>
+														<View style={styles.productItemInfo}>
+															<Text
+																style={[
+																	styles.productName,
+																	{
+																		color: colors.text,
+																	},
+																]}
+															>
+																{product.name}
+															</Text>
+
+															<Text
+																style={[
+																	styles.productNutrition,
+																	{
+																		color: colors.textMuted,
+																	},
+																]}
+															>
+																{product.nutritionPer100g.calories} ккал · Б{' '}
+																{product.nutritionPer100g.proteinG} · Ж{' '}
+																{product.nutritionPer100g.fatG} · У{' '}
+																{product.nutritionPer100g.carbsG}
+															</Text>
+														</View>
+
+														<Ionicons
+															name={
+																isSelected
+																	? 'checkmark-circle'
+																	: 'add-circle-outline'
+															}
+															size={24}
+															color={colors.primary}
+														/>
+													</Pressable>
+												);
+											})}
+										</ScrollView>
+									)}
+								</View>
+
+								<View style={styles.modalButtons}>
+									<Pressable
+										style={[
+											styles.modalButton,
+											styles.cancelButton,
+											{
+												backgroundColor: colors.cardSecondary,
+											},
+										]}
+										onPress={closeAddMealModal}
+									>
+										<Text
+											style={[
+												styles.cancelButtonText,
+												{ color: colors.textSecondary },
+											]}
+										>
+											Отмена
+										</Text>
+									</Pressable>
+									<Pressable
+										style={[
+											styles.modalButton,
+											{
+												backgroundColor: colors.primary,
+												opacity:
+													selectedProducts.length === 0 || isSavingMeal
+														? 0.5
+														: 1,
+											},
+										]}
+										onPress={handleSaveMeal}
+										disabled={isSavingMeal || selectedProducts.length === 0}
+									>
+										<Text style={styles.nextButtonText}>
+											{isSavingMeal ? 'Сохранение...' : 'Сохранить'}
+										</Text>
+									</Pressable>
+								</View>
+							</>
+						)}
+					</View>
+				</View>
+			</Modal>
 		</SafeAreaView>
 	);
 }
@@ -443,7 +1001,8 @@ const styles = StyleSheet.create({
 
 	productName: {
 		flex: 1,
-		fontSize: 15,
+		fontSize: 14,
+		fontWeight: '600',
 	},
 
 	productAmount: {
@@ -500,5 +1059,226 @@ const styles = StyleSheet.create({
 	errorText: {
 		fontSize: 15,
 		textAlign: 'center',
+	},
+
+	modalOverlay: {
+		flex: 1,
+		backgroundColor: 'rgba(0, 0, 0, 0.45)',
+		justifyContent: 'center',
+		paddingHorizontal: 20,
+	},
+
+	modalCard: {
+		borderRadius: 24,
+		padding: 20,
+	},
+
+	modalTitle: {
+		fontSize: 21,
+		fontWeight: '800',
+		textAlign: 'center',
+	},
+
+	modalSubtitle: {
+		fontSize: 14,
+		textAlign: 'center',
+		marginTop: 6,
+		marginBottom: 20,
+	},
+
+	modalHeaderRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: 12,
+	},
+
+	mealTypeList: {
+		gap: 8,
+		marginBottom: 16,
+	},
+
+	mealTypeGrid: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		gap: 10,
+	},
+
+	mealTypeButton: {
+		width: '48%',
+		minHeight: 52,
+		borderRadius: 14,
+		borderWidth: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+
+	mealTypeText: {
+		fontSize: 14,
+		fontWeight: '600',
+		textAlign: 'center',
+	},
+
+	mealTypeButtonText: {
+		fontSize: 15,
+		fontWeight: '700',
+	},
+
+	timeLabel: {
+		fontSize: 15,
+		fontWeight: '700',
+		marginTop: 22,
+		marginBottom: 8,
+	},
+
+	timeInput: {
+		height: 52,
+		borderRadius: 14,
+		borderWidth: 1,
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 16,
+		gap: 10,
+	},
+
+	timeText: {
+		fontSize: 16,
+		fontWeight: '600',
+	},
+
+	productSearchWrap: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderRadius: 12,
+		paddingHorizontal: 12,
+		marginBottom: 12,
+	},
+
+	productSearchInput: {
+		flex: 1,
+		height: 44,
+		marginLeft: 8,
+		fontSize: 15,
+	},
+
+	selectedProducts: {
+		marginBottom: 12,
+	},
+
+	selectedProductsTitle: {
+		fontSize: 14,
+		fontWeight: '700',
+		marginBottom: 8,
+	},
+
+	selectedProductRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderRadius: 12,
+		padding: 10,
+		marginBottom: 8,
+		gap: 8,
+	},
+
+	selectedProductInfo: {
+		flex: 1,
+	},
+
+	selectedProductName: {
+		fontSize: 14,
+		fontWeight: '600',
+	},
+
+	selectedProductNutrition: {
+		fontSize: 11,
+		marginTop: 2,
+	},
+
+	gramsInputWrap: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderColor: '#D1D5DB',
+		borderRadius: 8,
+		paddingHorizontal: 8,
+	},
+
+	gramsInput: {
+		width: 48,
+		height: 34,
+		fontSize: 14,
+		textAlign: 'center',
+	},
+
+	gramsLabel: {
+		fontSize: 12,
+	},
+
+	productListTitle: {
+		fontSize: 14,
+		fontWeight: '700',
+		marginBottom: 8,
+	},
+
+	productList: {
+		minHeight: 100,
+		maxHeight: 220,
+	},
+
+	productsScroll: {
+		flex: 1,
+	},
+
+	productItem: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		borderRadius: 12,
+		padding: 12,
+		marginBottom: 8,
+	},
+
+	productItemInfo: {
+		flex: 1,
+		paddingRight: 8,
+	},
+
+	productNutrition: {
+		fontSize: 11,
+		marginTop: 4,
+	},
+
+	emptyProductsText: {
+		textAlign: 'center',
+		paddingVertical: 24,
+		fontSize: 13,
+	},
+
+	modalButtons: {
+		flexDirection: 'row',
+		gap: 10,
+		marginTop: 24,
+	},
+
+	modalButton: {
+		flex: 1,
+		height: 50,
+		borderRadius: 15,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+
+	cancelButton: {},
+
+	cancelButtonText: {
+		fontSize: 15,
+		fontWeight: '700',
+	},
+
+	nextButtonText: {
+		color: '#fff',
+		fontSize: 15,
+		fontWeight: '800',
 	},
 });
