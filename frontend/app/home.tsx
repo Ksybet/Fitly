@@ -577,8 +577,7 @@ export default function HomeScreen() {
 
 							<Text style={[styles.smallAccentText, { color: colors.blue }]}>
 								{hasSleep
-									? getSleepQualityLabel(dailyData.sleepQuality) ||
-										'Без оценки'
+									? getSleepQualityLabel(dailyData.sleepQuality) || 'Без оценки'
 									: 'Нет данных'}
 							</Text>
 
@@ -672,7 +671,7 @@ export default function HomeScreen() {
 							/>
 						}
 						label='Питание'
-						disabled
+						onPress={() => router.push('/nutrition')}
 					/>
 
 					<ActionButton

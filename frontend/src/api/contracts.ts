@@ -290,3 +290,74 @@ export type PaginatedEnvelope<T> = {
 	data: T[];
 	meta: PaginationMeta;
 };
+
+export type NutritionValues = {
+	calories: number;
+	proteinG: number;
+	fatG: number;
+	carbsG: number;
+};
+
+export type FoodProduct = {
+	id: number;
+	name: string;
+	nutritionPer100g: NutritionValues;
+	source: 'system' | 'custom';
+	isActive: boolean;
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type FoodProductRequest = {
+	name: string;
+	nutritionPer100g: NutritionValues;
+	isActive?: boolean;
+};
+
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export type CatalogMealItemInput = {
+	productId: number;
+	amountG: number;
+};
+
+export type ManualMealItemInput = {
+	name: string;
+	amountG: number;
+	nutritionPer100g: NutritionValues;
+};
+
+export type MealItemInput = CatalogMealItemInput | ManualMealItemInput;
+
+export type MealItem = {
+	id: number;
+	productId: number | null;
+	name: string;
+	amountG: number;
+	nutritionPer100g: NutritionValues;
+	nutritionTotal: NutritionValues;
+};
+
+export type MealEntryRequest = {
+	mealType: MealType;
+	eatenAt: string;
+	title?: string;
+	items: MealItemInput[];
+};
+
+export type MealEntry = {
+	id: number;
+	mealType: MealType;
+	eatenAt: string;
+	date: string;
+	items: MealItem[];
+	nutritionTotal: NutritionValues;
+	createdAt: string;
+	updatedAt: string;
+};
+
+export type NutritionDay = {
+	date: string;
+	meals: MealEntry[];
+	totals: NutritionValues;
+};
